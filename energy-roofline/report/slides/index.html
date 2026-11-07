@@ -485,7 +485,24 @@ body.editing [contenteditable="true"] { outline: 1px dashed var(--ink-soft); }
   <div class="hair bot"></div><div class="chrome bot"><span>The model has no frequency or voltage term</span><span class="pagenum"></span></div>
 </section>
 
-<!-- ============ 15. CRITIQUE AND CONCLUSION ============ -->
+<!-- ============ 15. DRAM ENERGY SENSITIVITY ============ -->
+<section class="slide" data-title="DRAM energy">
+  <div class="chrome top"><span>05 · Sensitivity</span><span>Package-only energy</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>The <em>missing</em> DRAM energy</h2><span class="tag">race-to-halt ⟺ ε<sub>mem</sub> &lt; B<sub>τ</sub>·(ε<sub>flop</sub>+ε<sub>0</sub>)</span></div>
+    <div style="display:grid;grid-template-columns:520px 1fr;gap:48px;margin-top:28px">
+      <div class="col">
+        <div class="stat sm reveal d1"><div class="n">+840<small> pJ/B</small></div><div class="l">turbo on can absorb this much DRAM energy: over 2× paper 1's DRAM+interface estimate (253–389) → <b>robust</b></div></div>
+        <div class="stat sm reveal d2"><div class="n">+156<small> pJ/B</small></div><div class="l">turbo off flips at this point (238 with +3 W DRAM background), below that estimate → <b>fragile</b></div></div>
+      </div>
+      <div class="reveal d2"><div class="plate" style="height:520px"><img src="../figures/comparison/dram_sensitivity.png" alt="DRAM energy sensitivity"></div>
+        <p class="cap">ε<sub>mem</sub> is CPU-side only (loads, caches, ring, controller, PHY); DRAM cells, refresh and DIMM I/O are missing</p></div>
+    </div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>The 2–3× turbo-off advantage survives either way</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 16. CRITIQUE AND CONCLUSION ============ -->
 <section class="slide" data-title="Conclusion">
   <div class="chrome top"><span>06 · Critique &amp; conclusion</span><span></span></div><div class="hair top"></div>
   <div class="content">
@@ -493,7 +510,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed var(--ink-soft); }
       <div class="reveal"><p class="kicker" style="border-bottom:1.5px solid var(--ink);padding-bottom:12px">Strengths</p>
         <ul class="rows"><li data-n="+">5 numbers, &lt; 2% energy error</li><li data-n="+">Algorithm-centred (W, Q, I)</li><li data-n="+">Explains race-to-halt via π<sub>0</sub></li><li data-n="+">Extends cleanly: caps, caches</li></ul></div>
       <div class="reveal d1"><p class="kicker" style="border-bottom:1.5px solid var(--ink);padding-bottom:12px">Weaknesses (our evidence)</p>
-        <ul class="rows"><li data-n="−">Constants change 3× with DVFS</li><li data-n="−">Cap and throttling; best-case overlap</li><li data-n="−">Q counts DRAM only (matmul 1.4–2.4× off)</li><li data-n="−">No P/E cores, SMT or contention</li></ul></div>
+        <ul class="rows"><li data-n="−">Constants change 3× with DVFS</li><li data-n="−">Cap and throttling; best-case overlap</li><li data-n="−">Q counts DRAM only (matmul 1.4–2.4× off)</li><li data-n="−">No P/E cores, SMT or contention</li><li data-n="−">Package-only energy: turbo-off verdict DRAM-sensitive</li></ul></div>
     </div>
     <p class="verdict reveal d2" style="margin-top:48px;font-size:66px;width:1500px">Faster ⇒ greener <em>at a fixed clock</em>, but the fastest clock is not the greenest.</p>
   </div>
