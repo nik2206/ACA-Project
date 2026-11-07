@@ -123,23 +123,29 @@ Anomalies
 2. Power noise at low load: single-thread runs show identical GFLOP/s but +-7% package power
    (20-23 W) from background desktop activity on the idle cores. Negligible at high power.
 3. Runs were made with turbo ON, so frequency is not constant across intensities
-   (memory-bound runs also run at full clock). The optional turbo-off rerun of Exp 1
-   (needs sudo) has NOT been done.
+   (memory-bound runs also run at full clock). A turbo-off dataset (Exp 1, 2, 4; no
+   throttling) was recorded afterwards: see the turbo-off sections at the end.
 4. pi0 from the fit (about 23 W) is about 8x the idle package power (2.8 W): as in paper 1,
    the "constant" power includes the active-but-not-computing power of all cores and the
    uncore at full clock, not just idle.
 5. Run 2 was done on the same day right after run 1, not after a reboot.
 
-Turbo-off rerun of Exp 1 (for the critique section)
----------------------------------------------------
-- Files: results_turbo_off.csv (Exp 1 only, 30 rows), run_flags_turbo_off.csv,
+Turbo-off dataset: Exp 1, 2 and 4 (for the critique section)
+------------------------------------------------------------
+- Files: results_turbo_off.csv (117 rows: Exp 1 intensity 30 + Exp 2 reuse 72 + Exp 4 real
+  15; no Exp 3), run_flags_turbo_off.csv (row-aligned), q_measured_turbo_off.csv (Exp 4),
   idle_power_turbo_off.txt, machine_info_turbo_off.txt, run_log_turbo_off.txt,
-  console_turbo_off.log.
-- Date: 2026-11-07, 18:02-18:06 IST. Command: ONLY=intensity TAG=turbo_off ./run.sh
+  console_turbo_off.log (Exp 1), console_turbo_off_reuse_real.log (Exp 2 + 4).
+- Date: 2026-11-07. Exp 1: 18:02-18:06 IST, ONLY=intensity TAG=turbo_off ./run.sh.
+  Exp 2 + 4: 18:29-18:38 IST, ONLY=reuse,real TAG=turbo_off ./run.sh run into a scratch folder,
+  then its rows were APPENDED to results_turbo_off.csv / run_flags_turbo_off.csv (flag row
+  numbers renumbered) and its run_log appended, because run.sh rewrites its output files.
+  Idle package power before the second part: 2.71 W (same as the first part).
 - Setting: intel_pstate no_turbo=1, so P-cores were capped at 2.1 GHz (base) and E-cores at
   1.5 GHz. Everything else identical (Performance profile, AC, 8 threads,
   same binding). Turbo was switched back on afterwards.
-- Throttling: NONE. 0 of 30 rows throttled, all first attempts, package max 47-49 C.
+- Throttling: NONE. 0 of 117 rows throttled, every run on its first attempt, package
+  max 52 C (Exp 1: 47-49 C).
   Idle package power 2.71 W.
 - Theoretical peak at base clocks: 4 x 2.1 x 16 + 4 x 1.5 x 8 = 182 GFLOP/s;
   measured 165 GFLOP/s (91%). DRAM bandwidth 36.4 GB/s (vs 40.1 with turbo).
@@ -165,10 +171,60 @@ Turbo-off rerun of Exp 1 (for the critique section)
     and voltage, which is exactly the weakness the critique should name.
   * All three fitted energy constants drop by about 3x at base clock (lower voltage: energy scales
     roughly with V^2), while B_eps stays about 6.3. B_tau halves (peak flops halve, bandwidth
-    almost unchanged), so the relation between B_tau and the effective energy balance can
-    change with the frequency setting (the race-to-halt verdict may differ per DVFS state;
-    let analyze.py decide).
+    almost unchanged), but B_eps_hat also falls (eta_flop 0.61 -> 0.42), so the race-to-halt
+    verdict is the SAME in both states (analyze.py): turbo on B_tau 9.03 > B_eps_hat 5.35,
+    turbo off B_tau 4.53 > B_eps_hat 3.34. Race-to-halt holds within each frequency setting,
+    yet the turbo-off setting is 2-3x more energy-efficient overall: the model's verdict is
+    per DVFS state and says nothing about which state to pick.
   * With turbo off, compute-bound runs draw LESS package power (13.6 W) than memory-bound
     runs (16-18 W): with no turbo headroom, the uncore/memory path dominates power.
   * No thermal throttling at all, so this dataset is the cleaner fit of the model;
     the turbo-on data shows what happens on a thermally limited laptop.
+
+Key turbo-ON vs turbo-OFF comparison (analyze.py on results.csv vs results_turbo_off.csv)
+-----------------------------------------------------------------------------------------
+                         turbo ON (run 1)   turbo OFF      off/on
+  peak GFLOP/s                361.7            165.0         0.46
+  peak GB/s                    40.1             36.4         0.91
+  eps_flop (pJ/flop)           99.8             34.9         0.35
+  eps_mem  (pJ/B)             641.0            219.1         0.34
+  pi0 (W)                      23.24             7.89        0.34
+  B_tau (flop/B)                9.03             4.53
+  B_eps (flop/B)                6.43             6.28
+  B_eps_hat (flop/B)            5.35             3.34
+  eta_flop                      0.608            0.422
+  peak GFLOP/J                  6.09            12.09         1.99
+  model error energy (med/max) 1.7/4.9 %        1.6/7.2 %
+  model error time   (med/max) 1.3/15.3 %       2.3/18.7 %
+  verdict                     race-to-halt     race-to-halt   (B_tau > B_eps_hat in both)
+  throttled rows               21 of 171        0 of 117
+
+  Exp 2 data-movement energy (pJ/B; eps_flop and pi0 held fixed):
+                L1     L2     L3    DRAM     (L1 : L2 : L3 : DRAM relative to DRAM)
+  turbo ON     196    221    287    639      0.31 : 0.35 : 0.45 : 1
+  turbo OFF     62     71     96    219      0.28 : 0.32 : 0.44 : 1
+  Turbo-on L2 is unreliable: all its K=1,2,4 repeats are throttled; with throttled rows
+  excluded it becomes about 276 pJ/B. The turbo-off values have no throttled rows and are the
+  ones to quote for the data-reuse claim (L1 < L2 < L3 < DRAM). Both settings give
+  nearly the same ratios to DRAM.
+  Cache bandwidth halves with the clock (L1 232 -> 106 GB/s at K=1), DRAM only -9%.
+
+  Exp 4 real kernels (8 threads), GFLOP/s and GFLOP/J:
+                       turbo ON           turbo OFF          GFLOP/J off/on
+  triad               2.4  0.053          2.3  0.160          x3.04
+  matmul_naive       26.0  0.370         19.2  1.089          x2.94
+  matmul_tiled b=32  54.9  0.659         26.3  1.375          x2.09
+  matmul_tiled b=64  75.4  0.924*        35.3  1.960          x2.12
+  matmul_tiled b=128 91.1  1.073*        42.9  2.363          x2.20
+  (* all repeats throttled with turbo on.)
+  Tiling gain (b=128 vs naive, GFLOP/J): 2.9x turbo on, 2.2x turbo off.
+  Measured Q per rep, turbo off (q_measured_turbo_off.csv): triad 0.83x analytic (same as
+  turbo on), naive 1.60e10 B (0.23x; 1.34e10 with turbo on), tiled b=32/64/128 1.08/0.83/0.80x.
+
+  Takeaways:
+  * Every kernel, at every intensity and data location, is 2-3x more energy-efficient with
+    turbo off. Memory-bound code (DRAM K<=8, triad, naive matmul) gains the most (2.8-3.0x)
+    because it loses only about 10% speed; compute-bound code gains about 2.0-2.2x for a 2.2x
+    slowdown.
+  * Race-to-halt holds WITHIN each setting (B_tau > B_eps_hat), but racing at turbo clocks is
+    not energy-optimal: the model assumes fixed eps/pi0, which DVFS changes by about 3x.

@@ -1,0 +1,6 @@
+kernel,n,tile,threads,Q_analytic_per_rep,Q_measured_per_rep,method
+triad,33554432,0,8,1.073742e+09,8.914865e+08,perf_imc_free_running
+matmul_naive,2048,0,8,6.882014e+10,1.604191e+10,perf_imc_free_running
+matmul_tiled,2048,32,8,4.395631e+09,4.764206e+09,perf_imc_free_running
+matmul_tiled,2048,64,8,2.248147e+09,1.865545e+09,perf_imc_free_running
+matmul_tiled,2048,128,8,1.174405e+09,9.383193e+08,perf_imc_free_running
