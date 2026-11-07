@@ -70,8 +70,8 @@ How Q was obtained
     matmul_tiled  b=32: 0.90-0.92, b=64: 0.82, b=128: 0.73-0.77
   Validation: the method reproduces the tiled analytic Q to within about 1% in a quiet test.
 
-Changes from the original bench.c / run.sh (all in the git history of branch person-a)
----------------------------------------------------------------------------------------
+Changes from the original bench.c / run.sh (all in the git history of main)
+----------------------------------------------------------------------------
 1. Hybrid load balancing (bench.c). With schedule(static) the E-cores got the same share as
    the P-cores and the P-cores idled: 8 threads reached 211 GFLOP/s, fewer than 4 P-cores
    alone (254). Now each thread owns a fixed slice whose size is calibrated to its measured
@@ -146,7 +146,6 @@ Turbo-off dataset: Exp 1, 2 and 4 (for the critique section)
   same binding). Turbo was switched back on afterwards.
 - Throttling: NONE. 0 of 117 rows throttled, every run on its first attempt, package
   max 52 C (Exp 1: 47-49 C).
-  Idle package power 2.71 W.
 - Theoretical peak at base clocks: 4 x 2.1 x 16 + 4 x 1.5 x 8 = 182 GFLOP/s;
   measured 165 GFLOP/s (91%). DRAM bandwidth 36.4 GB/s (vs 40.1 with turbo).
 
