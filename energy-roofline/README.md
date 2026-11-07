@@ -137,3 +137,44 @@ python3 make_fake_data.py --out /tmp/fake --check
 `analyze.py` figures: fig1 roofline, fig2 arch line, fig3 powerline (all with the power-capped
 model and real kernels), fig4 per-level energy/bandwidth, fig5 arch lines by data location,
 fig6 thread scaling, fig7 naive vs tiled matmul, fig8 energy breakdown, fig9 model vs measured.
+
+### Open points and caveats in the analysis
+
+These are judgement calls or uncertainties in the modelling. Check them before the viva.
+
+- **Per-level (cache) energies use a relative-error-weighted fit.** With an unweighted fit, the
+  high-K points dominate and a 1% error in eps_flop swamps the small cache cost. On the fake data
+  that gave L1/L2 errors of 45-50%. The weighting changes our real-data values by less than 1%.
+- **pi0 is only weakly determined by the regression.** T/W is proportional to Q/W when
+  memory-bound and constant when compute-bound, so pi0 trades off against eps_mem and eps_flop.
+  With 2% synthetic noise the fitted pi0 varies by about +-20% between seeds. Our real data
+  (about 0.5-1% noise) reproduces within 2% between run 1 and run 2.
+- **Turbo-on L2 energy (about 275 pJ/B) is unreliable.** Its K = 1, 2, 4 configurations were
+  throttled in every repeat and are excluded, so L2 cannot be told apart from L3 (284). Quote the
+  turbo-off values (62 / 71 / 96 / 219 pJ/B) for the data-reuse claim.
+- **The power cap is fixed by a rule, not fitted.** Delta_pi = (max measured Exp 1 power) - pi0
+  comes from a single reading (44.0 W in run 1, 47.1 W in run 2). Paper 2 fits it by regression.
+  The capped model over-predicts the slowdown at I = 8, because the CPU lowers frequency and
+  voltage at its limit instead of delaying operations at a fixed energy cost.
+- **Two paper values were read off figures, not tables:** the i7-950's peak efficiency
+  (about 0.34 GFLOP/J, from paper 1's Fig. 4) and its B_eps_hat (about 1.1).
+- **Differences from notes.txt.** Max Exp 1 power is 67.2 W (notes: about 69 W). Points near the
+  corner sit 14-15% below the roof in run 1, 8-11% in run 2 and 19% with turbo off (notes:
+  14-27%). In run 2 the fastest thread count at I = 4 is 12, not 8 (a near-tie).
+- **The report byline says "Person A / Person B".** Replace it with the authors' names.
+
+### Viewing the slide deck
+
+`report/slides/index.html` is a single self-contained HTML file. It loads its fonts from Google
+Fonts and its figures from `report/figures/`, so keep the folder structure intact.
+
+```bash
+xdg-open report/slides/index.html                  # default browser (Linux)
+google-chrome report/slides/index.html             # or name a browser directly
+```
+
+Controls: Right/Left arrows, Space or Page Up/Down to move between slides, Home/End for the first
+and last slide; mouse wheel and swipe also work. Press F11 for full screen. `#8` at the end of the
+URL opens slide 8. Press **E** (or hover the top-left corner) to edit text in place. Edits are
+saved in that browser's localStorage only, not in the file. To get a PDF, print from Chrome with
+landscape layout and no margins.
