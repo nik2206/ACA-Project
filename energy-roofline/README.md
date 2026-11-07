@@ -111,3 +111,29 @@ break the model's assumption of a constant cost per operation. Therefore:
   outcome in `run_flags.csv`.
 - On the i5-13420H, roughly 20-30 of 171 rows remain throttled. They are the hottest
   configurations (74-85 W: L2/L3 reuse at low K, tiled matmul). See `data/<host>/notes.txt`.
+
+## Analysis and report (Workstream B)
+
+Requirements: Python 3 with numpy and matplotlib only (no scipy/pandas). The PDF build uses
+google-chrome/chromium in headless mode (pandoc is not needed).
+
+```bash
+H=data/sai-Victus-by-HP-Gaming-Laptop-15-fa1xxx
+# fit + figures + summary.txt/summary.json for each dataset (throttled rows are dropped)
+python3 analyze.py $H/results.csv           --flags $H/run_flags.csv           --out report/figures/turbo_on      --tag "turbo on"
+python3 analyze.py $H/results_run2.csv      --flags $H/run_flags_run2.csv      --out report/figures/turbo_on_run2 --tag "turbo on, run 2"
+python3 analyze.py $H/results_turbo_off.csv --flags $H/run_flags_turbo_off.csv --out report/figures/turbo_off     --tag "turbo off"
+# comparisons (any two or more summary.json files; also works for a second machine)
+python3 compare.py report/figures/turbo_on/summary.json report/figures/turbo_off/summary.json \
+        --labels "turbo on" "turbo off" --out report/figures/comparison
+python3 compare.py report/figures/turbo_on/summary.json report/figures/turbo_on_run2/summary.json \
+        --labels "run 1" "run 2" --out report/figures/repeatability
+# report PDF
+python3 report/build_pdf.py
+# regression test of the fitting code (planted parameters, corrupted+flagged rows)
+python3 make_fake_data.py --out /tmp/fake --check
+```
+
+`analyze.py` figures: fig1 roofline, fig2 arch line, fig3 powerline (all with the power-capped
+model and real kernels), fig4 per-level energy/bandwidth, fig5 arch lines by data location,
+fig6 thread scaling, fig7 naive vs tiled matmul, fig8 energy breakdown, fig9 model vs measured.
