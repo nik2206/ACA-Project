@@ -129,3 +129,46 @@ Anomalies
    the "constant" power includes the active-but-not-computing power of all cores and the
    uncore at full clock, not just idle.
 5. Run 2 was done on the same day right after run 1, not after a reboot.
+
+Turbo-off rerun of Exp 1 (for the critique section)
+---------------------------------------------------
+- Files: results_turbo_off.csv (Exp 1 only, 30 rows), run_flags_turbo_off.csv,
+  idle_power_turbo_off.txt, machine_info_turbo_off.txt, run_log_turbo_off.txt,
+  console_turbo_off.log.
+- Date: 2026-11-07, 18:02-18:06 IST. Command: ONLY=intensity TAG=turbo_off ./run.sh
+- Setting: intel_pstate no_turbo=1, so P-cores were capped at 2.1 GHz (base) and E-cores at
+  1.5 GHz. Everything else identical (Performance profile, AC, 8 threads,
+  same binding). Turbo was switched back on afterwards.
+- Throttling: NONE. 0 of 30 rows throttled, all first attempts, package max 47-49 C.
+  Idle package power 2.71 W.
+- Theoretical peak at base clocks: 4 x 2.1 x 16 + 4 x 1.5 x 8 = 182 GFLOP/s;
+  measured 165 GFLOP/s (91%). DRAM bandwidth 36.4 GB/s (vs 40.1 with turbo).
+
+  Exp 1 medians, turbo ON (results.csv) vs OFF (results_turbo_off.csv):
+     K    I    GFLOP/s on/off   GB/s on/off   W on/off    GFLOP/J on/off  (off/on)
+     1  0.25     10.0    9.1    39.9  36.4    49.8 16.2    0.20  0.56     x2.81
+     4  1.00     39.7   36.5    39.7  36.5    53.4 17.2    0.74  2.11     x2.83
+    16  4.00    157.8  120.0    39.4  30.0    62.5 18.4    2.53  6.49     x2.57
+    64  16.0    312.6  163.5    19.5  10.2    63.7 16.1    4.91 10.12     x2.06
+   256  64.0    361.5  158.9     5.6   2.5    63.7 13.9    5.67 11.39     x2.01
+   512  128     355.7  158.5     2.8   1.2    61.6 13.6    5.77 11.68     x2.02
+
+  Quick unconstrained least-squares fit (my check, not analyze.py):
+     turbo ON : eps_flop 100 pJ, eps_mem 641 pJ/B, pi0 23.2 W, B_tau 9.0, B_eps 6.4
+     turbo OFF: eps_flop  35 pJ, eps_mem 219 pJ/B, pi0  7.9 W, B_tau 4.5, B_eps 6.3
+
+- Observations for the report:
+  * Turbo off is 2.0-2.9x more energy-efficient at EVERY intensity and loses at most 2.3x speed
+    (compute-bound) and only about 9% at low intensity (memory-bound: DRAM barely needs the
+    high clock). So "faster = more energy-efficient" does not hold across DVFS states. The
+    model's constants (eps_flop, eps_mem, pi0) are only constant at one fixed frequency
+    and voltage, which is exactly the weakness the critique should name.
+  * All three fitted energy constants drop by about 3x at base clock (lower voltage: energy scales
+    roughly with V^2), while B_eps stays about 6.3. B_tau halves (peak flops halve, bandwidth
+    almost unchanged), so the relation between B_tau and the effective energy balance can
+    change with the frequency setting (the race-to-halt verdict may differ per DVFS state;
+    let analyze.py decide).
+  * With turbo off, compute-bound runs draw LESS package power (13.6 W) than memory-bound
+    runs (16-18 W): with no turbo headroom, the uncore/memory path dominates power.
+  * No thermal throttling at all, so this dataset is the cleaner fit of the model;
+    the turbo-on data shows what happens on a thermally limited laptop.
