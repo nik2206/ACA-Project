@@ -151,11 +151,13 @@ int main(int argc, char **argv) {
     }
 
     double e0[64], e1[64];
+    mon_start();
     rapl_read(e0);
     double t0 = now();
     for (long r = 0; r < reps; r++) RUN();
     double T = now() - t0;
     rapl_read(e1);
+    mon_stop();
     double Epkg, Edram; rapl_diff(e0, e1, &Epkg, &Edram);
 
     double nd = (double)n, Wrep, Qrep;
@@ -171,7 +173,9 @@ int main(int argc, char **argv) {
 
     printf("%ld,%ld,%ld,%d,%ld,%.6e,%.6e,%.6f,%.6f,%.6f,%.6e\n",
            n, bytes, tile, threads, reps, Wrep * reps, Qrep * reps, T, Epkg, Edram, cs);
-    fprintf(stderr, "info: kernel=%s Q=%s psys_J=%.6f\n", kname,
+    fprintf(stderr, "info: ");
+    mon_report(stderr);
+    fprintf(stderr, "kernel=%s Q=%s psys_J=%.6f\n", kname,
             q_measured ? "measured" : "analytic", rapl_psys(e0, e1));
     free(x); free(y); free(z);
     return 0;

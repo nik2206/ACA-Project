@@ -90,4 +90,91 @@ static double now(void) {
     return t.tv_sec + 1e-9 * t.tv_nsec;
 }
 
+// ---------- throttle monitor ----------
+// Laptops throttle during a run in ways that break the "constant cost per op" model:
+// thermald lowers the package long-term limit PL1 when the die gets hot, and the CPU's
+// own thermal control (TCC) cuts clocks near Tjmax. A background thread samples PL1 and
+// the package temperature every 50 ms during the timed region; the kernel's
+// thermal_throttle counters (events and total throttled time) are compared before/after.
+//   mon_start(); ...timed region...; mon_stop();
+//   then mon.throttled, mon.thr_frac, mon.pl1_min_w, mon.temp_max_c, mon.events
+// throttled = PL1 was lowered, or the package was thermally throttled for more than 2%
+// of the timed region (brief TCC blips below that are counted in events but tolerated).
+// PL1_NOMINAL_UW (env) gives the unthrottled PL1; default: PL1 at mon_start().
+#include <pthread.h>
+#include <unistd.h>
+#include <glob.h>
+
+static struct {
+    pthread_t th; volatile int stop, running;
+    char temp_path[256];
+    double pl1_nominal_w, pl1_min_w, temp_max_c, t0, thr_frac;
+    long ev0, events, ms0; int throttled;
+} mon;
+
+static double pl1_w(void) {
+    double v = read_num("/sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw");
+    return v < 0 ? -1 : v * 1e-6;
+}
+static double pkg_temp_c(void) {
+    if (!mon.temp_path[0]) return -1;
+    double v = read_num(mon.temp_path); return v < 0 ? -1 : v * 1e-3;
+}
+static long throttle_events(void) {   // core + package thermal throttle events, all CPUs
+    glob_t g; long s = 0;
+    if (glob("/sys/devices/system/cpu/cpu[0-9]*/thermal_throttle/*_throttle_count", 0, NULL, &g)) return 0;
+    for (size_t i = 0; i < g.gl_pathc; i++) { double v = read_num(g.gl_pathv[i]); if (v > 0) s += (long)v; }
+    globfree(&g); return s;
+}
+static long pkg_throttle_ms(void) {
+    double v = read_num("/sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_total_time_ms");
+    return v < 0 ? 0 : (long)v;
+}
+static void *mon_loop(void *arg) {
+    (void)arg;
+    while (!mon.stop) {
+        double p = pl1_w(), t = pkg_temp_c();
+        if (p >= 0 && p < mon.pl1_min_w) mon.pl1_min_w = p;
+        if (t > mon.temp_max_c) mon.temp_max_c = t;
+        usleep(50000);
+    }
+    return NULL;
+}
+static void mon_start(void) {
+    if (!mon.temp_path[0]) {                       // find the package temperature sensor
+        glob_t g; char ty[64];
+        if (!glob("/sys/class/thermal/thermal_zone*/type", 0, NULL, &g)) {
+            for (size_t i = 0; i < g.gl_pathc; i++)
+                if (!read_str(g.gl_pathv[i], ty, sizeof ty) && !strcmp(ty, "x86_pkg_temp")) {
+                    snprintf(mon.temp_path, sizeof mon.temp_path, "%.*stemp",
+                             (int)(strlen(g.gl_pathv[i]) - 4), g.gl_pathv[i]);
+                    break;
+                }
+            globfree(&g);
+        }
+    }
+    const char *nom = getenv("PL1_NOMINAL_UW");
+    mon.pl1_nominal_w = nom && atof(nom) > 0 ? atof(nom) * 1e-6 : pl1_w();
+    mon.pl1_min_w = 1e30; mon.temp_max_c = -1; mon.stop = 0;
+    mon.ev0 = throttle_events();
+    mon.ms0 = pkg_throttle_ms();
+    mon.t0 = now();
+    mon.running = !pthread_create(&mon.th, NULL, mon_loop, NULL);
+}
+static void mon_stop(void) {
+    double p = pl1_w();
+    if (mon.running) { mon.stop = 1; pthread_join(mon.th, NULL); mon.running = 0; }
+    if (p >= 0 && p < mon.pl1_min_w) mon.pl1_min_w = p;
+    if (mon.pl1_min_w > 1e29) mon.pl1_min_w = -1;
+    double dt = now() - mon.t0;
+    mon.events = throttle_events() - mon.ev0;
+    mon.thr_frac = dt > 0 ? (pkg_throttle_ms() - mon.ms0) * 1e-3 / dt : 0;
+    mon.throttled = mon.thr_frac > 0.02 ||
+        (mon.pl1_nominal_w > 0 && mon.pl1_min_w >= 0 && mon.pl1_min_w < mon.pl1_nominal_w - 0.5);
+}
+static void mon_report(FILE *f) {
+    fprintf(f, "throttled=%d throttle_frac=%.3f pl1_min_W=%.1f pl1_nominal_W=%.1f temp_max_C=%.0f throttle_events=%ld ",
+            mon.throttled, mon.thr_frac, mon.pl1_min_w, mon.pl1_nominal_w, mon.temp_max_c, mon.events);
+}
+
 #endif

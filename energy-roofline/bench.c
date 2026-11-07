@@ -126,19 +126,23 @@ int main(int argc, char **argv) {
     }
 
     double e0[64], e1[64];
+    mon_start();
     rapl_read(e0);
     t0 = now();
     cs += kernel(x, K, reps);
     double T = now() - t0;
     rapl_read(e1);
+    mon_stop();
     double Epkg, Edram; rapl_diff(e0, e1, &Epkg, &Edram);
 
     double W = 2.0 * K * (double)n * reps;
     double Q = 8.0 * (double)n * reps;
     printf("%ld,%ld,%d,%d,%ld,%.6e,%.6e,%.6f,%.6f,%.6f,%.6e\n",
            n, n * 8, K, threads, reps, W, Q, T, Epkg, Edram, cs);
-    // diagnostics on stderr (not part of the CSV): load balance and platform (psys) energy
-    fprintf(stderr, "info: imbalance=%.3f psys_J=%.6f shares=", imbalance(threads), rapl_psys(e0, e1));
+    // diagnostics on stderr (not part of the CSV): throttling, load balance, psys energy
+    fprintf(stderr, "info: ");
+    mon_report(stderr);
+    fprintf(stderr, "imbalance=%.3f psys_J=%.6f shares=", imbalance(threads), rapl_psys(e0, e1));
     for (int t = 0; t < threads; t++)
         fprintf(stderr, "%s%.3f", t ? ":" : "", (double)(bhi[t] - blo[t]) / n * threads);
     fprintf(stderr, "\n");

@@ -10,12 +10,19 @@
 #                    keeps the running-average package power below the long-term power
 #                    limit PL1 so timed runs are not throttled; 0 disables)
 #   MEASURE_Q=0      don't measure DRAM traffic of the real kernels with perf; use formulas
+#   MAX_TRIES=<n>    attempts per measurement if throttling is detected (default 3)
+# Throttling: bench/kernels report on stderr whether thermald lowered PL1 or the CPU
+# thermally throttled during the timed region. Before each run we wait until PL1 is back
+# at its nominal value and the package has cooled; a throttled run is retried after a
+# longer pause, up to MAX_TRIES (the last attempt is kept either way). run_flags.csv has
+# one line per results.csv data row (same order) with the throttle diagnostics.
 # Outputs (in OUTDIR, with _TAG suffix if set):
 #   results.csv       Section-5 format (the only file analyze.py needs)
 #   machine_info.txt  lscpu + derived core/cache numbers
 #   idle_power.txt    idle package power
 #   q_measured.csv    Exp 4: analytic vs perf-measured DRAM bytes per rep
-#   run_log.txt       per-run diagnostics from stderr (load imbalance, psys, Q method)
+#   run_flags.csv     per-row diagnostics: attempt, throttled, throttle_frac, PL1 min, max temp
+#   run_log.txt       raw per-run diagnostics from stderr (also slice shares, psys, Q method)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -29,6 +36,10 @@ SUF=${TAG:+_$TAG}
 OUT=$OUTDIR/results$SUF.csv
 LOGF=$OUTDIR/run_log$SUF.txt
 COOLDOWN=${COOLDOWN:-1.5}
+MAX_TRIES=${MAX_TRIES:-3}
+FLAGS=$OUTDIR/run_flags$SUF.csv
+PL1F=/sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw
+TEMPF=$(grep -l '^x86_pkg_temp$' /sys/class/thermal/thermal_zone*/type 2>/dev/null | head -1 | sed 's/type$/temp/')
 
 # ---------- machine info ----------
 PHYS=$(lscpu -p=CORE,SOCKET | grep -v '^#' | sort -u | wc -l)   # physical cores
@@ -53,25 +64,47 @@ fi
 
 echo "exp,level,n,bytes,K,threads,reps,W,Q,time_s,E_pkg_J,E_dram_J,checksum" > "$OUT"
 : > "$LOGF"
+echo "row,exp,level,K,threads,attempt,throttled,throttle_frac,pl1_min_W,temp_max_C,throttle_events,imbalance" > "$FLAGS"
 cool() {  # cool $start: idle COOLDOWN x (elapsed since start), so PL1 is never reached
   local el; el=$(python3 -c "import time;print(max(0.0,(time.time()-$1)*$COOLDOWN))")
   python3 -c "import time;time.sleep($el)"; }
-record() {  # exp level K threads line errfile
+record() {  # exp level K threads line errfile attempt
   echo "$1,$2,$5" >> "$OUT"
-  echo "  $1 $2 K=$3 thr=$4 -> $5"
-  echo "$1,$2,K=$3,thr=$4 $(grep '^info:' "$6" | tr '\n' ' ')" >> "$LOGF"
+  echo "  $1 $2 K=$3 thr=$4 -> $5$([ "$7" -gt 1 ] && echo " (attempt $7)")"
+  local info; info=$(grep '^info:' "$6" | tr '\n' ' ')
+  echo "$1,$2,K=$3,thr=$4 attempt=$7 $info" >> "$LOGF"
+  python3 -c "
+import sys; kv=dict(t.split('=',1) for t in sys.argv[1].split() if '=' in t)
+g=lambda k: kv.get(k,'')
+print(','.join([sys.argv[2]]+sys.argv[3:]+[g('throttled'),g('throttle_frac'),g('pl1_min_W'),g('temp_max_C'),g('throttle_events'),g('imbalance')]))
+" "$info" $(( $(wc -l < "$OUT") - 1 )) $1 $2 $3 $4 $7 >> "$FLAGS"
   grep -v '^info:' "$6" >&2 || true; }
+wait_ready() {  # until PL1 is nominal and the package is below 65 C (max 90 s)
+  for _ in $(seq 90); do
+    local ok=1
+    [ -r "$PL1F" ] && [ -n "${PL1_NOMINAL_UW:-}" ] && [ "$(cat $PL1F)" -lt "$PL1_NOMINAL_UW" ] && ok=0
+    [ -n "$TEMPF" ] && [ "$(cat $TEMPF)" -gt 65000 ] && ok=0
+    [ $ok = 1 ] && return 0; sleep 1
+  done; echo "  (warning: machine did not return to nominal PL1 / <65 C within 90 s)"; }
+throttled() { grep -q 'throttled=1' "$1"; }
 ERR=$(mktemp); trap 'rm -f "$ERR"' EXIT
 run() {  # exp level n K threads
   for r in $(seq $REPEAT); do
-    local s; s=$(python3 -c "import time;print(time.time())")
-    line=$(OMP_NUM_THREADS=$5 ./bench $3 $4 $MINS 2>"$ERR")
-    record $1 $2 $4 $5 "$line" "$ERR"
-    cool $s
+    local s a
+    for a in $(seq $MAX_TRIES); do
+      wait_ready
+      s=$(python3 -c "import time;print(time.time())")
+      line=$(OMP_NUM_THREADS=$5 ./bench $3 $4 $MINS 2>"$ERR")
+      cool $s
+      throttled "$ERR" && [ $a -lt $MAX_TRIES ] && { echo "  throttled, retrying: $1 $2 K=$4 thr=$5"; sleep 15; continue; }
+      break
+    done
+    record $1 $2 $4 $5 "$line" "$ERR" $a
   done; }
 
 # Idle power (for reference / sanity-check of pi0)
 [ "${QUICK:-0}" = 1 ] || { echo "settling 20 s before idle measurement..."; sleep 20; }
+[ -r "$PL1F" ] && export PL1_NOMINAL_UW=${PL1_NOMINAL_UW:-$(cat $PL1F)} && echo "nominal PL1 = $((PL1_NOMINAL_UW/1000000)) W"
 python3 - <<'EOF' > "$OUTDIR/idle_power$SUF.txt" || true
 import glob,time
 fs=[f for f in glob.glob('/sys/class/powercap/intel-rapl:*/energy_uj') if f.count(':')==1
@@ -154,10 +187,16 @@ runk() {  # kernel n tile
   echo "  $1 n=$2 tile=$3: Q/rep analytic=$qa measured=${qm:-n/a}"
   cool $s
   for r in $(seq $REPEAT); do
-    s=$(python3 -c "import time;print(time.time())")
-    line=$(Q_OVERRIDE=${qm:-0} OMP_NUM_THREADS=$PHYS ./kernels $1 $2 $3 $MINS 2>"$ERR")
-    record real $1 "${3:-0}" $PHYS "$line" "$ERR"
-    cool $s
+    local a
+    for a in $(seq $MAX_TRIES); do
+      wait_ready
+      s=$(python3 -c "import time;print(time.time())")
+      line=$(Q_OVERRIDE=${qm:-0} OMP_NUM_THREADS=$PHYS ./kernels $1 $2 $3 $MINS 2>"$ERR")
+      cool $s
+      throttled "$ERR" && [ $a -lt $MAX_TRIES ] && { echo "  throttled, retrying: real $1 tile=$3"; sleep 15; continue; }
+      break
+    done
+    record real $1 "${3:-0}" $PHYS "$line" "$ERR" $a
   done; }
 runk triad $TRIAD_N 0
 runk matmul_naive $MM_N 0
