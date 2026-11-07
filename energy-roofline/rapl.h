@@ -8,6 +8,8 @@
 //   rapl_init();
 //   double e0[64], e1[64]; rapl_read(e0); ...work... rapl_read(e1);
 //   double Epkg, Edram; rapl_diff(e0, e1, &Epkg, &Edram);   // J, -1 if unavailable
+//   double Epsys = rapl_psys(e0, e1);   // platform domain (Intel "psys"), J, -1 if absent;
+//                                       // reported separately, never added to Epkg
 #ifndef RAPL_H
 #define RAPL_H
 
@@ -17,7 +19,7 @@
 #include <time.h>
 #include <dirent.h>
 
-typedef struct { char path[512]; double max_uj; int is_dram; } dom_t;
+typedef struct { char path[512]; double max_uj; int is_dram, is_psys; } dom_t;
 static dom_t doms[64];
 static int ndoms = 0;
 
@@ -42,7 +44,8 @@ static void rapl_init(void) {
         if (read_str(p, name, sizeof name)) continue;
         int is_pkg = (colons == 1 && !strncmp(name, "package", 7));
         int is_dram = !strcmp(name, "dram");
-        if (!is_pkg && !is_dram) continue;
+        int is_psys = (colons == 1 && !strcmp(name, "psys"));
+        if (!is_pkg && !is_dram && !is_psys) continue;
         snprintf(doms[ndoms].path, 512, "%s/%s/energy_uj", base, e->d_name);
         if (read_num(doms[ndoms].path) < 0) {
             fprintf(stderr, "warning: cannot read %s (run: sudo chmod -R a+r %s/intel-rapl*)\n",
@@ -52,10 +55,12 @@ static void rapl_init(void) {
         snprintf(p, sizeof p, "%s/%s/max_energy_range_uj", base, e->d_name);
         doms[ndoms].max_uj = read_num(p);
         doms[ndoms].is_dram = is_dram;
+        doms[ndoms].is_psys = is_psys;
         ndoms++;
     }
     closedir(d);
-    if (!ndoms) fprintf(stderr, "warning: no readable RAPL domains, energy will be -1\n");
+    int npkg = 0; for (int i = 0; i < ndoms; i++) npkg += !doms[i].is_psys;
+    if (!npkg) { ndoms = 0; fprintf(stderr, "warning: no readable RAPL domains, energy will be -1\n"); }
 }
 static void rapl_read(double *v) { for (int i = 0; i < ndoms; i++) v[i] = read_num(doms[i].path); }
 static void rapl_diff(const double *a, const double *b, double *pkg, double *dram) {
@@ -64,10 +69,19 @@ static void rapl_diff(const double *a, const double *b, double *pkg, double *dra
     for (int i = 0; i < ndoms; i++) {
         double d = b[i] - a[i];
         if (d < 0) d += doms[i].max_uj;            // counter wrap-around
+        if (doms[i].is_psys) continue;
         if (doms[i].is_dram) { *dram += d * 1e-6; have_dram = 1; }
         else *pkg += d * 1e-6;
     }
     if (!have_dram) *dram = -1;
+}
+static double rapl_psys(const double *a, const double *b) {
+    for (int i = 0; i < ndoms; i++) if (doms[i].is_psys) {
+        double d = b[i] - a[i];
+        if (d < 0) d += doms[i].max_uj;
+        return d * 1e-6;
+    }
+    return -1;
 }
 
 // ---------- timer ----------
