@@ -57,3 +57,57 @@ Each configuration runs for at least 1 s and is repeated 3 times; the analysis u
   so π0 is much smaller than the paper's 122 W, which was measured for the full machine.
 - Peaks are measured from the benchmark itself, not taken from vendor specs.
 - Turbo boost changes the clock with load and temperature; mention it if it was on.
+
+## run.sh options, real kernels and throttling handling (Workstream A)
+
+### Environment variables
+| Variable | Default | Meaning |
+|---|---|---|
+| `QUICK=1` | off | Smoke test: 1 repeat, 0.3 s runs, fewer K values, smaller arrays (a few minutes) |
+| `ONLY=<list>` | all | Comma-separated experiments to run: `intensity`, `reuse`, `threads`, `real`. Example: `ONLY=intensity,real ./run.sh` |
+| `OUTDIR=<dir>` | `.` | Where all outputs are written, e.g. `OUTDIR=data/$(hostname)` |
+| `TAG=<name>` | none | Suffix for every output file: `TAG=run2` gives `results_run2.csv`, `run_flags_run2.csv`, ... |
+| `COOLDOWN=<f>` | `1.5` | After each run, idle for f × that run's wall time, so the package's average power stays below the long-term limit PL1. `0` disables |
+| `MAX_TRIES=<n>` | `3` | Attempts per measurement when throttling is detected (the last attempt is kept either way) |
+| `MEASURE_Q=0` | on | Don't measure DRAM traffic of the real kernels with perf; use the analytic formulas |
+
+A full run takes about 35-40 min on the i5-13420H laptop (cool-downs and retries included).
+
+### Outputs (in `OUTDIR`, with `_TAG` suffix if set)
+| File | Contents |
+|---|---|
+| `results.csv` | Section-5 format; the only file `analyze.py` needs |
+| `run_flags.csv` | One line per `results.csv` data row, same order: `attempt`, `throttled` (0/1), `throttle_frac`, `pl1_min_W`, `temp_max_C`, `throttle_events`, `imbalance`. Use it to drop or down-weight throttled rows |
+| `q_measured.csv` | Exp 4: analytic vs perf-measured DRAM bytes per rep |
+| `machine_info.txt`, `idle_power.txt` | CPU details; idle package power (after a 20 s settle) |
+| `run_log.txt` | Raw per-run diagnostics (also per-thread slice shares and psys energy) |
+
+### Real kernels (Exp 4, `kernels.c`)
+`./kernels <triad|matmul_naive|matmul_tiled|check> <n> [tile] [min_seconds]` prints the same CSV
+tail as `bench.c`. `./kernels check 256` verifies that tiled and naive matmul agree.
+If perf can read the memory-controller counters (`uncore_imc_free_running_*`, needs
+`sudo sysctl -w kernel.perf_event_paranoid=-1`), run.sh measures Q per rep: it runs the
+kernel once with 1 rep and once with R reps, takes the difference, and subtracts the idle
+background traffic. It then passes the result to `kernels` through `Q_OVERRIDE` (bytes per
+rep). `REPS=<r>` fixes the rep count, which the differencing needs.
+
+### Hybrid CPUs (P-cores + E-cores)
+`bench.c` gives each thread a fixed contiguous slice and calibrates the slice sizes to each
+thread's measured speed before timing, so fast and slow cores finish together. All reps run
+inside one parallel region, so there is no fork/join overhead per rep. The real kernels use
+dynamic scheduling. Cache working sets are computed from the total capacity of each level
+(`lscpu`), and the L3 set is larger than all L2 caches combined.
+
+### Throttling handling
+Laptops throttle during a run in two ways. thermald lowers the package power limit PL1
+when the die gets hot, and the CPU's own thermal control (TCC) cuts clocks near Tjmax. Both
+break the model's assumption of a constant cost per operation. Therefore:
+- `rapl.h` runs a monitor thread during every timed region. It samples PL1 and the package
+  temperature every 50 ms and diffs the kernel counters in
+  `/sys/devices/system/cpu/cpu*/thermal_throttle/`. A run counts as **throttled** if PL1 dropped
+  below its nominal value or the package was throttled for more than 2% of the timed region.
+- Before every run, run.sh waits until PL1 is back at nominal and the package is below 65 °C.
+  It retries a throttled run after a 15 s pause, up to `MAX_TRIES` times, and records the
+  outcome in `run_flags.csv`.
+- On the i5-13420H, roughly 20-30 of 171 rows remain throttled. They are the hottest
+  configurations (74-85 W: L2/L3 reuse at low K, tiled matmul). See `data/<host>/notes.txt`.
