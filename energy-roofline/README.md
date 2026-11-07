@@ -128,6 +128,8 @@ python3 compare.py report/figures/turbo_on/summary.json report/figures/turbo_off
         --labels "turbo on" "turbo off" --out report/figures/comparison
 python3 compare.py report/figures/turbo_on/summary.json report/figures/turbo_on_run2/summary.json \
         --labels "run 1" "run 2" --out report/figures/repeatability
+# DRAM energy sensitivity figure + table (needs the two summary.json files above)
+python3 report/dram_sensitivity.py
 # report PDF
 python3 report/build_pdf.py
 # regression test of the fitting code (planted parameters, corrupted+flagged rows)
@@ -156,6 +158,11 @@ These are judgement calls or uncertainties in the modelling. Check them before t
   comes from a single reading (44.0 W in run 1, 47.1 W in run 2). Paper 2 fits it by regression.
   The capped model over-predicts the slowdown at I = 8, because the CPU lowers frequency and
   voltage at its limit instead of delaying operations at a fixed energy cost.
+- **DRAM energy is missing (package-only RAPL).** `report/dram_sensitivity.py` shows the turbo-on
+  race-to-halt verdict survives up to 840 pJ/B of extra DRAM energy, but the turbo-off verdict
+  flips at 156-238 pJ/B. That is below the 253-389 pJ/B DRAM+interface estimate that paper 1
+  quotes, though part of that estimate (controller, CPU-side PHY) is already in our eps_mem.
+  The report (section 4.7) calls turbo on robust and turbo off fragile.
 - **Two paper values were read off figures, not tables:** the i7-950's peak efficiency
   (about 0.34 GFLOP/J, from paper 1's Fig. 4) and its B_eps_hat (about 1.1).
 - **Differences from notes.txt.** Max Exp 1 power is 67.2 W (notes: about 69 W). Points near the

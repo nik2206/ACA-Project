@@ -152,13 +152,32 @@ Constant energy is 35–47% of the total at every intensity with turbo on (Figur
 
 ### 4.6 Turbo on vs turbo off: the main finding
 
-<p class="figrow"><img src="figures/comparison/cmp_archline.png"></p>
 <p class="figrow"><img src="figures/comparison/cmp_ratio.png"></p>
-<p class="cap">Figure 8. Top: fitted arch lines and measurements with turbo on and off, absolute and normalised to each setting's peak. Bottom: measured turbo-off / turbo-on ratio of energy efficiency and speed.</p>
+<p class="cap">Figure 8. Measured turbo-off / turbo-on ratio of energy efficiency and speed for the synthetic kernel (left) and the real kernels (right). Overlaid arch lines and rooflines for both settings are in figures/comparison/.</p>
 
 Disabling turbo makes **every kernel 2.0–2.9× more energy-efficient at every intensity** (Figure 8): peak efficiency rises from 6.1 to 12.1 GFLOP/J. The cost in speed depends on intensity. Compute-bound code runs at 0.44–0.46× its turbo speed and gains 2.0× in efficiency. Memory-bound code loses only about 9% of its speed, because DRAM bandwidth barely depends on core clock, and gains 2.8–2.9×. The real kernels behave the same way: triad and naive matmul gain 3.0× and 2.9× for at most 26% lost speed, the tiled kernels 2.1–2.2×.
 
 The fitted constants explain this. **All three energy constants drop by about a factor of three** (ε_flop 100 → 35 pJ, ε_mem 641 → 219 pJ/B, π₀ 23 → 8 W), which is roughly what the square of the voltage reduction would give. B_ε stays near 6.3: both ε_flop and the on-chip part of ε_mem scale with the same core and uncore voltage. B_τ halves (the flop rate halves, bandwidth falls only 9%), and B̂_ε falls from 5.35 to 3.34. The verdict is **race-to-halt in both settings**, yet the slower setting is twice as efficient. Racing to halt is the right advice *within* a fixed frequency and voltage, but not *across* frequencies. The model has no frequency or voltage in it: its constants are fitted at one DVFS state, so it cannot say which state to choose. Even so, refitting the model at each state predicts the efficiency gain accurately.
+
+### 4.7 DRAM energy sensitivity
+
+RAPL on this CPU reports package energy only, so the fitted ε_mem (641 pJ/B with turbo on, 219 pJ/B with turbo off) is the **CPU-side** cost of moving a byte from DRAM, which is a lower bound on the full cost. It *includes* the load instructions, the L1/L2/L3 caches, the ring interconnect, the memory controller and the CPU-side PHY. It *excludes* the DRAM devices themselves: cell activation and sensing, refresh, and the DIMM-side I/O. Time is unaffected (τ_mem, B_τ and the measured bandwidths stay the same); only the energy constants are incomplete.
+
+How much missing energy would change the verdict? The arch line reaches half of its peak at B̂_ε = (η·B_ε + (1−η)·B_τ)/(2−η) when this value is below B_τ, and at B̂_ε = η·B_ε otherwise. Both cases reduce to one condition:
+
+> **B̂_ε < B_τ ⟺ η·B_ε < B_τ ⟺ ε_mem < B_τ·ε_flop/η = B_τ·(ε_flop + ε₀)**
+
+Adding an assumed DRAM-device energy x to ε_mem raises B_ε and B̂_ε linearly (Figure 9). DRAM background power Δπ₀ adds to ε₀, which *raises* the threshold, so it makes race-to-halt slightly more robust, not less:
+
+| Setting | fitted ε_mem | B_τ | Largest x that keeps race-to-halt: +0 W / +1 W / +3 W | B̂_ε at x = 253 / 389 pJ/B |
+|---|---|---|---|---|
+| Turbo on | 641 pJ/B | 9.03 | **840** / 865 / 914 pJ/B | 6.46 / 7.05 (< 9.03) |
+| Turbo off | 219 pJ/B | 4.53 | **156** / 183 / 238 pJ/B | 5.71 / 7.35 (> 4.53) |
+
+<p class="figrow"><img class="wide" src="figures/comparison/dram_sensitivity.png"></p>
+<p class="cap">Figure 9. B_ε and B̂_ε against an assumed extra DRAM energy per byte; race-to-halt holds while B̂_ε stays under the B_τ line. Grey band: the DRAM + interface estimate of Keckler et al. quoted in paper 1 (253–389 pJ/B). Dashed: with 3 W of DRAM background power added to π₀.</p>
+
+Paper 1 quotes an estimate from Keckler et al. of 253–389 pJ/B for DRAM access, interface and wire transfer. Part of that (the controller and CPU-side interface) is already in our ε_mem, so the truly missing amount is smaller, but by an unknown margin. **With turbo on the verdict is robust:** flipping it needs more than 840 pJ/B of missing energy, over twice the *whole* Keckler estimate. Even then B̂_ε reaches only 6.5–7.1 against B_τ = 9.03. **With turbo off the verdict is fragile:** 156–238 pJ/B of DRAM energy would be enough, which is below the Keckler range, so a system-level measurement could show a balance gap at base clocks. In both settings the missing DRAM energy narrows the gap, since it raises B_ε towards (turbo on) or further past (turbo off) B_τ. The headline result does not depend on it: turbo off is 2–3× more efficient in package energy, and adding the same DRAM energy per byte to both settings would shrink but not reverse that advantage, because DRAM device energy does not depend on core clock.
 
 ## 5. Critique of the model
 
@@ -176,15 +195,15 @@ The fitted constants explain this. **All three energy constants drop by about a 
 4. *Only DRAM traffic counts.* Kernels with heavy cache reuse (matmul) use 1.4–2.4× more energy than predicted even with their measured time (§4.2). An inclusive cache term, as in paper 2, is needed.
 5. *π₀ is a catch-all and weakly identified.* It absorbs the uncore, the idle cores and leakage, and is 8× the idle power. In the regression it trades off against ε_mem and ε_flop, because T/W is proportional to Q/W in the memory-bound regime and constant in the compute-bound one. With 2% synthetic noise the fitted π₀ varied by ±20% between seeds, while the real data (≈ 0.5–1% noise) reproduced within 2%.
 6. *No model of threads, heterogeneity or contention.* The P/E cores, SMT and bandwidth saturation shape Exp 3, but the model has one chip-wide peak and one ε_flop.
-7. *Measurement boundary.* RAPL package energy omits DRAM, so our ε_mem is the on-chip cost of moving a byte (loads, caches, ring, memory controller). It is not comparable to the wall-socket costs in the papers, and the true system-level balance would favour data movement even more.
+7. *Measurement boundary.* RAPL package energy omits DRAM, so our ε_mem is the on-chip cost of moving a byte (loads, caches, ring, memory controller). It is not comparable to the wall-socket costs in the papers. §4.7 shows the turbo-on verdict survives any plausible DRAM energy, but the turbo-off verdict would flip with 156–238 pJ/B of DRAM energy.
 8. *Reads and writes, prefetching and random access are not distinguished.* Triad's measured traffic was only 0.83× the textbook count because the core avoids part of the write-allocate read.
 
-**Limitations of this study.** One machine; package-only energy; a same-day repeat rather than one after a reboot; a fit on the synthetic kernel only; throttled turbo-on configurations excluded or flagged; no thread experiment with turbo off.
+**Limitations of this study.** One machine; package-only energy, so ε_mem is a lower bound and the turbo-off race-to-halt verdict is sensitive to it (§4.7); a same-day repeat rather than one after a reboot; a fit on the synthetic kernel only; throttled turbo-on configurations excluded or flagged; no thread experiment with turbo off.
 
 ## 6. Conclusion
 
 1. The energy roofline model fits this hybrid laptop CPU closely: the median energy error is 1.7% and the median time error 1.3%, and a repeat run agrees within 3%.
-2. Race-to-halt holds within each setting: B_τ > B̂_ε with turbo on (9.03 > 5.35) and with turbo off (4.53 > 3.34). Faster code at a fixed clock is also more energy-efficient code.
+2. Race-to-halt holds within each setting: B_τ > B̂_ε with turbo on (9.03 > 5.35) and with turbo off (4.53 > 3.34). Faster code at a fixed clock is also more energy-efficient code. With turbo on this survives any plausible missing DRAM energy; with turbo off it would not survive more than about 160–240 pJ/B (§4.7).
 3. Since 2013, flop energy has fallen about 7× while byte energy has barely moved, so B_ε has risen from ≈ 1.2 to ≈ 6.4. With turbo off it already exceeds B_τ, and only constant power (≈ 8× idle power) keeps race-to-halt valid.
 4. Data reuse is the one optimisation that improves time and energy together: L1 < L2 < L3 < DRAM (62 / 71 / 96 / 219 pJ/B, turbo off), and tiling makes matmul 2.2–2.9× more energy-efficient.
 5. The energy-optimal thread count is low for memory-bound code (2 threads at I = 0.25) and equal to the maximum only for compute-bound code.

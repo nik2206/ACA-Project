@@ -11,11 +11,12 @@ import html, os, re, shutil, subprocess, sys
 
 CSS = """
 @page { size: A4; margin: 11mm 13mm 11mm 13mm; }
-body { font-family: "DejaVu Serif", Georgia, serif; font-size: 9.2pt; line-height: 1.3; color: #222;
+body { font-family: "DejaVu Serif", Georgia, serif; font-size: 9pt; line-height: 1.28; color: #222;
        max-width: 184mm; margin: 0 auto; }
 h1 { font-size: 16pt; line-height: 1.2; margin: 0 0 4pt; }
 h2 { font-size: 12.5pt; margin: 12pt 0 4pt; border-bottom: 0.6pt solid #bbb; padding-bottom: 1pt; }
 h3 { font-size: 10.8pt; margin: 9pt 0 3pt; }
+h2, h3 { page-break-after: avoid; break-after: avoid; }
 p { margin: 3pt 0 5pt; text-align: justify; }
 ul, ol { margin: 2pt 0 5pt; padding-left: 17pt; } li { margin: 1pt 0; }
 blockquote { margin: 4pt 0 6pt 14pt; padding: 2pt 8pt; border-left: 2pt solid #2a78d6; background: #f5f8fc; }
@@ -25,9 +26,9 @@ th, td { border-bottom: 0.5pt solid #ccc; padding: 2pt 6pt; text-align: left; }
 th { border-bottom: 1pt solid #555; background: #f3f3f3; }
 code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.4pt; background: #f2f2f2; padding: 0 2pt; }
 p.figrow { display: flex; gap: 4mm; justify-content: center; margin: 6pt 0 0; page-break-inside: avoid; }
-p.figrow img { width: 44%; height: auto; object-fit: contain; }
-p.figrow img:only-child { width: 58%; }
-p.figrow img.wide { width: 60%; }
+p.figrow img { width: 41%; height: auto; object-fit: contain; }
+p.figrow img:only-child { width: 53%; }
+p.figrow img.wide { width: 54%; }
 p.cap { font-size: 8.4pt; color: #444; text-align: left; margin: 2pt 4mm 9pt; page-break-before: avoid; }
 em.meta { color: #555; }
 """
