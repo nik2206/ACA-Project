@@ -1,0 +1,57 @@
+=== turbo off ===
+
+Throttling:
+flags file: data/sai-Victus-by-HP-Gaming-Laptop-15-fa1xxx/run_flags_turbo_off.csv
+  intensity :   0 of  30 rows throttled and dropped
+  reuse     :   0 of  72 rows throttled and dropped
+  real      :   0 of  15 rows throttled and dropped
+
+=== Fitted machine parameters (Exp 1, all cores, data in DRAM) ===
+energy measured           : package only (no DRAM domain)
+sustained peak            : 165.0 GFLOP/s (double)
+sustained bandwidth       : 36.4 GB/s
+eps_flop                  : 34.9 pJ/flop
+eps_mem                   : 219.1 pJ/byte
+pi0 (constant power)      : 7.89 W   (idle package power 2.71 W)
+eps0 = pi0*tau_flop       : 47.8 pJ/flop
+time balance   B_tau      : 4.53 flop/byte
+energy balance B_eps      : 6.28 flop/byte  (ignoring pi0)
+effective B_eps_hat       : 3.34 flop/byte  (incl. pi0; half-max of arch line)
+eta_flop                  : 0.422
+peak energy efficiency    : 12.09 GFLOP/J  (model asymptote)
+max measured power        : 18.4 W  -> delta_pi = 10.5 W
+uncapped model peak power : 21.6 W (at I = B_tau)
+
+Model error on Exp 1 (|model-measured|/measured):
+  energy  uncapped: median 1.6%, max 7.2%   capped: median 1.4%, max 2.5%
+  time    uncapped: median 2.3%, max 18.7%   capped: median 1.2%, max 8.2%
+  power   uncapped: median 1.7%, max 14.1%   capped: median 1.2%, max 6.1%
+  points near the corner (B_tau/4..4*B_tau), % below the uncapped roof: I=2: 5%, I=4: 19%, I=8: 8%, I=16: 1%
+
+Verdict: B_tau > B_eps_hat -> time-efficiency implies energy-efficiency; race-to-halt works.
+
+=== Data-movement energy by level (Exp 2; eps_flop and pi0 held fixed; INCLUSIVE upper bounds) ===
+  L1       61.8 pJ/B   max  106.2 GB/s   configs used 6/6
+  L2       70.6 pJ/B   max  101.5 GB/s   configs used 6/6
+  L3       96.1 pJ/B   max   87.7 GB/s   configs used 6/6
+  DRAM    218.9 pJ/B   max   36.4 GB/s   configs used 6/6
+
+=== Real kernels (Exp 4) vs model (measured Q) ===
+  kernel           I  GFLOP/s  GFLOP/J   T meas  T model     err   E meas  E model     err  cap err err|Tmeas
+  naive mm      1.07     19.2    1.089    1.790    0.881    -51%     31.6     15.2    -52%     -52%      -29%
+  tiled b=32    3.61     26.3    1.375    1.309    0.262    -80%     25.0      5.4    -79%     -77%      -46%
+  tiled b=64    9.21     35.3    1.960    1.458    0.312    -79%     26.3      5.5    -79%     -79%      -45%
+  tiled b=128  18.31     42.9    2.363    1.200    0.312    -74%     21.8      4.9    -78%     -78%      -46%
+  triad         0.08      2.3    0.160    1.022    0.857    -16%     14.6     13.7     -7%      -7%        2%
+  (model = roofline bound; 'err|Tmeas' = energy model evaluated with the measured time)
+  tiling gain (best tiled vs naive, GFLOP/J): 2.17x
+
+=== Energy breakdown (pJ/flop) ===
+  I=0.25   flops    34.9  mem   876.6  const   867.0  (const share 48.7%)  measured 1778.2
+  I=1      flops    34.9  mem   219.1  const   218.7  (const share 46.3%)  measured 475.9
+  I=4      flops    34.9  mem    54.8  const    66.6  (const share 42.6%)  measured 155.0
+  I=16     flops    34.9  mem    13.7  const    48.3  (const share 49.8%)  measured 98.7
+  I=64     flops    34.9  mem     3.4  const    49.7  (const share 56.4%)  measured 87.8
+
+=== Thread scaling (Exp 3) ===
+  (no Exp 3 data)

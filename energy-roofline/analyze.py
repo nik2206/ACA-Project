@@ -346,7 +346,7 @@ def main():
         ax.text(Ip[0], idle_W, f" idle package power = {idle_W:.1f} W", va="bottom", fontsize=8, color=INK)
     ax.set(xlabel="Arithmetic intensity I (flop/byte)", ylabel="Average package power (W)", title=tt("Powerline"))
     ax.set_ylim(0, max(mp.max(), col(s, "P").max()) * 1.12)
-    vlines(ax, "top"); ax.legend(loc="center right")
+    vlines(ax, "top"); ax.legend(loc="center right", bbox_to_anchor=(1, 0.42))
     nice_log(ax); fig.savefig(P("fig3_powerline.png")); plt.close(fig)
 
     # fig4: per-level energy + bandwidth

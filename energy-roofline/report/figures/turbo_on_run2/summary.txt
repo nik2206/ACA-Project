@@ -1,0 +1,60 @@
+=== turbo on, run 2 ===
+
+Throttling:
+flags file: data/sai-Victus-by-HP-Gaming-Laptop-15-fa1xxx/run_flags_run2.csv
+  intensity :   0 of  30 rows throttled and dropped
+  reuse     :  20 of  72 rows throttled and dropped
+  threads   :   1 of  54 rows throttled and dropped
+  real      :   7 of  15 rows throttled and dropped
+
+=== Fitted machine parameters (Exp 1, all cores, data in DRAM) ===
+energy measured           : package only (no DRAM domain)
+sustained peak            : 367.7 GFLOP/s (double)
+sustained bandwidth       : 40.0 GB/s
+eps_flop                  : 100.8 pJ/flop
+eps_mem                   : 627.2 pJ/byte
+pi0 (constant power)      : 23.60 W   (idle package power 2.77 W)
+eps0 = pi0*tau_flop       : 64.2 pJ/flop
+time balance   B_tau      : 9.18 flop/byte
+energy balance B_eps      : 6.22 flop/byte  (ignoring pi0)
+effective B_eps_hat       : 5.31 flop/byte  (incl. pi0; half-max of arch line)
+eta_flop                  : 0.611
+peak energy efficiency    : 6.06 GFLOP/J  (model asymptote)
+max measured power        : 70.7 W  -> delta_pi = 47.1 W
+uncapped model peak power : 85.7 W (at I = B_tau)
+
+Model error on Exp 1 (|model-measured|/measured):
+  energy  uncapped: median 1.9%, max 5.1%   capped: median 2.0%, max 8.6%
+  time    uncapped: median 3.8%, max 10.9%   capped: median 2.2%, max 9.6%
+  power   uncapped: median 3.1%, max 14.6%   capped: median 1.1%, max 8.5%
+  points near the corner (B_tau/4..4*B_tau), % below the uncapped roof: I=4: 4%, I=8: 11%, I=16: 8%, I=32: 10%
+
+Verdict: B_tau > B_eps_hat -> time-efficiency implies energy-efficiency; race-to-halt works.
+
+=== Data-movement energy by level (Exp 2; eps_flop and pi0 held fixed; INCLUSIVE upper bounds) ===
+  L1      197.6 pJ/B   max  232.4 GB/s   configs used 5/6  (excluded K=[1]: all repeats throttled)
+  L2      275.9 pJ/B   max  222.1 GB/s   configs used 3/6  (excluded K=[1, 2, 4]: all repeats throttled)
+  L3      285.5 pJ/B   max  194.8 GB/s   configs used 5/6  (excluded K=[4]: all repeats throttled)
+  DRAM    630.7 pJ/B   max   39.9 GB/s   configs used 6/6
+
+=== Real kernels (Exp 4) vs model (measured Q) ===
+  kernel           I  GFLOP/s  GFLOP/J   T meas  T model     err   E meas  E model     err  cap err err|Tmeas
+  naive mm      1.28     25.9    0.359    1.326    0.668    -50%     95.6     36.0    -62%     -62%      -46%
+  tiled b=32    4.25     55.0    0.659    1.248    0.404    -68%    104.3     26.6    -75%     -75%      -55%
+  tiled b=64    9.28     72.7    0.975    1.182    0.234    -80%     88.1     20.0    -77%     -75%      -52%  (all repeats throttled)
+  tiled b=128  20.08     91.0    1.084    1.133    0.280    -75%     95.0     20.2    -79%     -79%      -58%  (all repeats throttled)
+  triad         0.08      2.4    0.053    1.021    0.799    -22%     45.9     39.1    -15%     -15%       -3%
+  (model = roofline bound; 'err|Tmeas' = energy model evaluated with the measured time)
+  tiling gain (best tiled vs naive, GFLOP/J): 3.02x
+
+=== Energy breakdown (pJ/flop) ===
+  I=0.25   flops   100.8  mem  2508.7  const  2365.7  (const share 47.6%)  measured 4974.0
+  I=1      flops   100.8  mem   627.2  const   592.5  (const share 44.9%)  measured 1342.6
+  I=4      flops   100.8  mem   156.8  const   152.8  (const share 37.2%)  measured 394.7
+  I=16     flops   100.8  mem    39.2  const    69.6  (const share 33.2%)  measured 206.2
+  I=64     flops   100.8  mem     9.8  const    69.3  (const share 38.5%)  measured 180.1
+
+=== Thread scaling (Exp 3) ===
+  I=0.25 flop/B: fastest at 8 threads, most energy-efficient at 2 threads (0.25 GFLOP/J vs 0.20 at fastest)
+  I=4 flop/B: fastest at 12 threads, most energy-efficient at 4 threads (2.70 GFLOP/J vs 2.38 at fastest)
+  I=64 flop/B: fastest at 12 threads, most energy-efficient at 12 threads (5.66 GFLOP/J vs 5.66 at fastest)
