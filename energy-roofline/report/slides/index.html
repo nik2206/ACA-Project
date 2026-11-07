@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Does faster mean greener? Energy roofline on the i5-13420H</title>
+<!-- Fonts: Newsreader (statements), Hanken Grotesk (body), DM Mono (chrome) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Hanken+Grotesk:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ===========================================
+   THEME TOKENS (Cobalt Grid): change colours / sizes here
+   =========================================== */
+:root {
+  --paper: #F0EBDE;
+  --paper-2: #E6E0CE;
+  --ink: #1F2BE0;
+  --ink-soft: #5560E5;
+  --grid: rgba(31, 43, 224, 0.10);
+  --ink-faint: rgba(31, 43, 224, 0.18);
+  --stage-bg: #d9d3c2;
+  --slide-bg: var(--paper);
+  --serif: "Newsreader", Georgia, serif;
+  --sans: "Hanken Grotesk", sans-serif;
+  --mono: "DM Mono", ui-monospace, monospace;
+  --edge: 80px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* === VIEWPORT BASE (mandatory, from frontend-slides viewport-base.css) === */
+/* ===========================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES
+   Include this ENTIRE file in every presentation.
+   Slides are authored at 1920×1080 and scaled as a whole.
+   =========================================== */
+
+/* 1. Lock the browser viewport */
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 2. Full-window deck viewport */
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 3. Fixed 16:9 design canvas.
+   JavaScript sets transform: translate(...) scale(...). */
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+/* 4. Slides stack inside the fixed stage.
+   Content must be laid out at 1920×1080, not reflowed per device. */
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+/* 5. Keep media inside authored slide bounds */
+img,
+video,
+canvas,
+svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 6. Presentation chrome stays outside the slide design system */
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+/* 7. Print one fixed-size slide per page */
+@media print {
+    html,
+    body {
+        width: 1920px;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-viewport {
+        position: static;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-stage {
+        position: static;
+        width: auto;
+        height: auto;
+        transform: none !important;
+        background: none;
+    }
+
+    .slide {
+        position: relative;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 1920px;
+        height: 1080px;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .slide:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+
+    .deck-controls {
+        display: none !important;
+    }
+}
+
+/* 8. Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+
+/* === SLIDE CANVAS: graph paper + hairline frame === */
+.slide { color: var(--ink); font-family: var(--sans); }
+.slide::before { content: ""; position: absolute; inset: 0; z-index: 0;
+  background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px),
+                    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 40px 40px; }
+.slide > * { position: relative; z-index: 2; }
+.hair { position: absolute !important; left: var(--edge); right: var(--edge); height: 1.5px; background: var(--ink); }
+.hair.top { top: 96px; } .hair.bot { bottom: 96px; }
+.chrome { position: absolute !important; left: var(--edge); right: var(--edge); display: flex; justify-content: space-between;
+  font: 400 20px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.chrome.top { top: 54px; } .chrome.bot { bottom: 54px; }
+
+/* === TYPE ROLES === */
+.kicker { font: 600 22px var(--sans); letter-spacing: .18em; text-transform: uppercase; }
+h1.hero { font: 400 200px/0.92 var(--serif); letter-spacing: -.01em; }
+h2 { font: 400 92px/0.98 var(--serif); letter-spacing: -.005em; }
+h2 em, h1 em { font-style: italic; }
+.lede { font: 400 38px/1.4 var(--sans); }
+.body { font: 400 32px/1.45 var(--sans); }
+.mono { font-family: var(--mono); }
+.tag { font: 400 22px var(--mono); letter-spacing: .04em; }
+sub, sup { font-size: .62em; line-height: 0; }
+
+/* === LAYOUT HELPERS (all in 1920x1080 stage coordinates) === */
+.content { position: absolute !important; left: var(--edge); right: var(--edge); top: 132px; bottom: 132px; }
+.head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1.5px solid var(--ink); padding-bottom: 18px; }
+.split { display: grid; grid-template-columns: 640px 1fr; gap: 64px; height: 100%; }
+.split.wide-left { grid-template-columns: 760px 1fr; }
+.col { display: flex; flex-direction: column; gap: 30px; }
+.col.center { justify-content: center; }
+.plate { background: #fff; border: 1.5px solid var(--ink); padding: 14px; display: flex; align-items: center; justify-content: center; }
+.plate img { display: block; max-width: 100%; max-height: 100%; }
+.plate[style*="height"] img { height: 100%; width: auto; object-fit: contain; }
+.fig-right { display: flex; align-items: flex-start; justify-content: flex-end; padding-top: 50px; min-height: 0; }
+.cap { font: 400 19px var(--mono); letter-spacing: .03em; margin-top: 10px; opacity: .8; }
+
+/* bullet list: mono index + sans text, faint row dividers */
+.rows { list-style: none; }
+.rows li { position: relative; padding: 18px 0 18px 70px; border-bottom: 1px solid var(--ink-faint);
+  font: 400 31px/1.38 var(--sans); }
+.rows li::before { content: attr(data-n); position: absolute; left: 0; top: 26px; font: 400 22px var(--mono); }
+.rows li:last-child { border-bottom: none; }
+
+/* ledger table */
+.ledger { width: 100%; border-collapse: collapse; }
+.ledger td, .ledger th { text-align: left; padding: 24px 24px 24px 0; border-bottom: 1px solid var(--ink-faint); vertical-align: baseline; }
+.ledger th { font: 600 19px var(--sans); letter-spacing: .16em; text-transform: uppercase; border-bottom: 1.5px solid var(--ink); }
+.ledger td.k { font: 400 46px var(--serif); white-space: nowrap; }
+.ledger td.v { font: 400 31px/1.38 var(--sans); }
+.ledger td.m { font: 400 26px var(--mono); }
+
+/* big numerals */
+.stat { border-top: 1.5px solid var(--ink); padding-top: 14px; }
+.stat .n { font: 400 112px/1 var(--serif); letter-spacing: -.015em; }
+.stat .n small { font-size: 46px; }
+.stat .l { font: 400 26px/1.35 var(--sans); margin-top: 8px; }
+.ledger.compact td, .ledger.compact th { padding: 14px 20px 14px 0; }
+.stat.sm .n { font-size: 88px; }
+.verdict { font: 400 54px/1.1 var(--serif); }
+.box { border: 1.5px solid var(--ink); padding: 24px 28px; }
+
+/* signature decorations */
+.glitch { position: absolute !important; right: var(--edge); top: 150px; width: 300px; height: 780px; }
+.qr { position: absolute !important; display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; width: 96px; height: 96px;
+  background: var(--paper); padding: 4px; }
+.qr i { background: var(--ink); } .qr i.o { background: transparent; }
+
+/* === ANIMATION: staggered reveal on the active slide === */
+.reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s var(--ease), transform .8s var(--ease); }
+.slide.visible .reveal { opacity: 1; transform: none; }
+.slide.visible .d1 { transition-delay: .12s; } .slide.visible .d2 { transition-delay: .24s; }
+.slide.visible .d3 { transition-delay: .36s; } .slide.visible .d4 { transition-delay: .48s; }
+.slide.visible .d5 { transition-delay: .6s; }
+.glitch rect { transform-origin: bottom; transform: scaleY(0); transition: transform 1.1s var(--ease); }
+.slide.visible .glitch rect { transform: scaleY(1); }
+
+/* === NON-SLIDE UI: progress bar, edit toggle (outside the stage) === */
+.progress { position: fixed; left: 0; bottom: 0; height: 4px; background: var(--ink); transition: width .4s var(--ease); z-index: 1000; }
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle { position: fixed; top: 16px; left: 16px; z-index: 10001; font: 500 14px var(--mono); background: var(--paper);
+  color: var(--ink); border: 1.5px solid var(--ink); padding: 8px 12px; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .3s; }
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+body.editing [contenteditable="true"] { outline: 1px dashed var(--ink-soft); }
+@media print { .progress, .edit-toggle, .edit-hotzone { display: none !important; } .reveal, .glitch rect { opacity: 1 !important; transform: none !important; } }
+</style>
+</head>
+<body>
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+
+<!-- ============ 1. TITLE ============ -->
+<section class="slide active" data-title="Title">
+  <div class="chrome top"><span>ACA · Energy roofline</span><span>Intel Core i5-13420H</span><span>Nov 2026</span></div>
+  <div class="hair top"></div>
+  <div class="content">
+    <p class="kicker reveal" style="margin-top:40px">Advanced Computer Architecture · Course project</p>
+    <h1 class="hero reveal d1" style="margin-top:44px;width:1400px">Does faster mean <em>greener?</em></h1>
+    <p class="lede reveal d2" style="margin-top:56px;width:1100px">Time, energy and power of a hybrid laptop CPU, measured and modelled with the energy roofline</p>
+    <p class="tag reveal d3" style="margin-top:40px">Person A · measurements &nbsp;&nbsp;/&nbsp;&nbsp; Person B · modelling &amp; report</p>
+  </div>
+  <svg class="glitch" viewBox="0 0 300 780" fill="#1F2BE0" aria-hidden="true">
+    <rect x="276" y="0" width="24" height="780"/><rect x="236" y="90" width="16" height="690"/><rect x="204" y="200" width="12" height="580"/>
+    <rect x="178" y="320" width="9" height="460"/><rect x="158" y="430" width="7" height="350"/><rect x="142" y="540" width="5" height="240"/>
+    <rect x="130" y="640" width="4" height="140"/><rect x="121" y="720" width="3" height="60"/></svg>
+  <div class="hair bot"></div>
+  <div class="chrome bot"><span>Choi et al., IPDPS 2013 / 2014</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 2. THE QUESTION ============ -->
+<section class="slide" data-title="Question">
+  <div class="chrome top"><span>01 · The question</span><span></span></div><div class="hair top"></div>
+  <div class="content" style="display:flex;flex-direction:column;justify-content:center">
+    <p class="kicker reveal">Energy is now a first-class cost: battery, heat, power limits</p>
+    <h2 class="reveal d1" style="font-size:118px;margin-top:40px;width:1500px">On a modern multicore CPU, does making code <em>faster</em> also make it more <em>energy-efficient?</em></h2>
+    <p class="lede reveal d2" style="margin-top:56px">Tool: the energy roofline model of Choi, Bedard, Fowler &amp; Vuduc (IPDPS 2013) and its 2014 extensions.</p>
+  </div>
+  <div class="qr" style="right:var(--edge);top:140px"><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i></div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Research question</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 3. ROOFLINE IN TIME ============ -->
+<section class="slide" data-title="Roofline">
+  <div class="chrome top"><span>02 · Background</span><span>Time</span></div><div class="hair top"></div>
+  <div class="content split">
+    <div class="col center">
+      <h2 class="reveal">The roofline in <em>time</em></h2>
+      <p class="body reveal d1">Algorithm: <b>W</b> flops, <b>Q</b> DRAM bytes, intensity <b>I = W/Q</b> (flop/B).</p>
+      <div class="box reveal d2"><p class="mono" style="font-size:30px">T = max(W·τ<sub>flop</sub>, Q·τ<sub>mem</sub>)</p></div>
+      <p class="body reveal d3">Flops and bytes <b>overlap</b>: the slower one wins. The corner at <b>B<sub>τ</sub> = τ<sub>mem</sub>/τ<sub>flop</sub></b> separates memory-bound from compute-bound.</p>
+    </div>
+    <div class="fig-right reveal d2"><div><div class="plate" style="height:670px"><img src="../figures/turbo_on/fig1_roofline.png" alt="Time roofline, turbo on"></div>
+      <p class="cap">Measured roofline, turbo on: peak 362 GFLOP/s, 40 GB/s → B<sub>τ</sub> = 9.03</p></div></div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Williams et al. 2009 · Choi et al. 2013</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 4. ENERGY MODEL ============ -->
+<section class="slide" data-title="Energy model">
+  <div class="chrome top"><span>02 · Background</span><span>Energy</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>Energy does <em>not</em> overlap</h2><span class="tag">Paper 1, §II</span></div>
+    <table class="ledger" style="margin-top:26px">
+      <tr class="reveal d1"><td class="k">E = W·ε<sub>flop</sub> + Q·ε<sub>mem</sub> + π<sub>0</sub>·T</td><td class="v">every flop and every byte is paid for; constant power π<sub>0</sub> is paid for the whole run</td></tr>
+      <tr class="reveal d2"><td class="k">B<sub>ε</sub> = ε<sub>mem</sub> / ε<sub>flop</sub></td><td class="v">energy balance, in <b>flop/B</b> (paper's Table I says "flops per Joule": a typo)</td></tr>
+      <tr class="reveal d3"><td class="k">ε<sub>0</sub> = π<sub>0</sub>·τ<sub>flop</sub></td><td class="v">constant energy charged to each flop at peak rate; η<sub>flop</sub> = ε<sub>flop</sub>/(ε<sub>flop</sub>+ε<sub>0</sub>)</td></tr>
+      <tr class="reveal d4"><td class="k">B̂<sub>ε</sub>(I) = η·B<sub>ε</sub> + (1−η)·max(0, B<sub>τ</sub>−I)</td><td class="v">effective energy balance: where the arch line reaches half its peak</td></tr>
+    </table>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Choi, Bedard, Fowler, Vuduc · IPDPS 2013</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 5. ARCH LINE AND BALANCE GAP ============ -->
+<section class="slide" data-title="Arch line">
+  <div class="chrome top"><span>02 · Background</span><span>Arch line</span></div><div class="hair top"></div>
+  <div class="content split">
+    <div class="col center">
+      <h2 class="reveal">Sum, not max: the <em>arch line</em></h2>
+      <ul class="rows reveal d1">
+        <li data-n="A">B̂<sub>ε</sub> &gt; B<sub>τ</sub>: <b>balance gap</b>. Code can be compute-bound in time yet memory-bound in energy.</li>
+        <li data-n="B">B<sub>τ</sub> &gt; B̂<sub>ε</sub>: <b>race-to-halt</b>. Fast code is already within 2× of the best efficiency.</li>
+        <li data-n="C">Large π<sub>0</sub> lowers B̂<sub>ε</sub> and favours racing.</li>
+      </ul>
+    </div>
+    <div class="fig-right reveal d2"><div><div class="plate" style="height:670px"><img src="../figures/turbo_on/fig2_archline.png" alt="Arch line, turbo on"></div>
+      <p class="cap">Measured arch line, turbo on: peak 6.1 GFLOP/J</p></div></div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Balance gap · race-to-halt</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 6. PAPER 2 EXTENSIONS ============ -->
+<section class="slide" data-title="Paper 2">
+  <div class="chrome top"><span>02 · Background</span><span>Paper 2 (2014)</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>Three extensions we use</h2><span class="tag">Choi, Dukhan, Liu, Vuduc · IPDPS 2014</span></div>
+    <table class="ledger" style="margin-top:30px">
+      <tr class="reveal d1"><td class="m">01</td><td class="k">Power cap Δπ</td><td class="v">T = max(Wτ<sub>flop</sub>, Qτ<sub>mem</sub>, (Wε<sub>flop</sub>+Qε<sub>mem</sub>)/Δπ): the powerline flattens and the roofline corner rounds off</td></tr>
+      <tr class="reveal d2"><td class="m">02</td><td class="k">Cache-level energy</td><td class="v"><b>inclusive</b> costs ε<sub>L1</sub> &lt; ε<sub>L2</sub> &lt; ε<sub>L3</sub> &lt; ε<sub>mem</sub>, from working sets sized to each level</td></tr>
+      <tr class="reveal d3"><td class="m">03</td><td class="k">π<sub>0</sub> dominates</td><td class="v">constant power is over half of peak power on 7 of 12 platforms</td></tr>
+    </table>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Extensions</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 7. SETUP ============ -->
+<section class="slide" data-title="Setup">
+  <div class="chrome top"><span>03 · Setup</span><span>HP Victus 15</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>Experimental setup</h2><span class="tag">i5-13420H · 4P (SMT) + 4E · AVX2</span></div>
+    <table class="ledger" style="margin-top:20px">
+      <tr class="reveal d1"><td class="k">Energy</td><td class="v">RAPL <b>package</b> only (no DRAM domain); idle 2.8 W</td></tr>
+      <tr class="reveal d2"><td class="k">Kernels</td><td class="v">K FMAs per loaded double → <b>I = K/4</b> (0.25 … 128); triad; naive &amp; tiled matmul, <b>Q measured</b> with IMC counters</td></tr>
+      <tr class="reveal d3"><td class="k">Experiments</td><td class="v">1 intensity · 2 data reuse (L1/L2/L3/DRAM) · 3 threads (1–12) · 4 real kernels</td></tr>
+      <tr class="reveal d4"><td class="k">Method</td><td class="v">≥ 1 s runs, median of 3, pinned threads, speed-weighted P/E load balance, throttle detection → retry → drop</td></tr>
+      <tr class="reveal d5"><td class="k">Settings</td><td class="v">turbo on (×2 runs) and turbo off · fit: NNLS on E/W = ε<sub>flop</sub> + ε<sub>mem</sub>·Q/W + π<sub>0</sub>·T/W</td></tr>
+    </table>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Setup</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 8. MACHINE MODEL ============ -->
+<section class="slide" data-title="Machine model">
+  <div class="chrome top"><span>04 · Results</span><span>Machine model · turbo on</span></div><div class="hair top"></div>
+  <div class="content split wide-left">
+    <div class="col">
+      <h2 class="reveal">Five numbers describe the chip</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:26px 40px" class="reveal d1">
+        <div class="stat"><div class="n">99.8<small> pJ</small></div><div class="l">ε<sub>flop</sub> per flop</div></div>
+        <div class="stat"><div class="n">641<small> pJ/B</small></div><div class="l">ε<sub>mem</sub> per byte</div></div>
+        <div class="stat"><div class="n">23.2<small> W</small></div><div class="l">constant power π<sub>0</sub></div></div>
+        <div class="stat"><div class="n">1.7<small> %</small></div><div class="l">median energy error (time 1.3%)</div></div>
+      </div>
+      <p class="verdict reveal d2">B<sub>τ</sub> 9.03 &gt; B̂<sub>ε</sub> 5.35 → <em>race-to-halt holds</em></p>
+    </div>
+    <div class="fig-right reveal d3"><div><div class="plate" style="width:960px"><img src="../figures/turbo_on/fig9_model_fit.png" alt="Model vs measured"></div>
+      <p class="cap">Model vs measured; run 2 reproduces every parameter within 3.3%</p></div></div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Exp 1 · 10 intensities · 8 threads</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 9. BALANCE GAP SINCE 2013 + pi0 ============ -->
+<section class="slide" data-title="Since 2013">
+  <div class="chrome top"><span>04 · Results</span><span>Balance gap and π₀</span></div><div class="hair top"></div>
+  <div class="content split">
+    <div class="col">
+      <h2 class="reveal">The gap has <em>narrowed</em></h2>
+      <div class="stat sm reveal d1"><div class="n">6.7×</div><div class="l">cheaper flops than the 2013 i7-950 (670 → 100 pJ); bytes barely moved (795 → 641 pJ/B)</div></div>
+      <div class="stat sm reveal d2"><div class="n">1.2 → 6.4</div><div class="l">B<sub>ε</sub> now approaches B<sub>τ</sub>; with turbo off it exceeds it (6.28 &gt; 4.53)</div></div>
+      <div class="stat sm reveal d3"><div class="n">8×</div><div class="l">π<sub>0</sub> ≈ 8× idle power: active baseline, not idle</div></div>
+    </div>
+    <div class="fig-right reveal d2"><div><div class="plate" style="width:1060px"><img src="../figures/turbo_on/fig8_energy_breakdown.png" alt="Energy breakdown"></div>
+      <p class="cap">Constant energy π<sub>0</sub>·T is 35–47% of the total at every intensity</p></div></div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Only π₀ keeps race-to-halt valid with turbo off</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 10. POWER CAP ============ -->
+<section class="slide" data-title="Power cap">
+  <div class="chrome top"><span>04 · Results</span><span>Powerline</span></div><div class="hair top"></div>
+  <div class="content split">
+    <div class="col center">
+      <h2 class="reveal">The <em>power cap</em></h2>
+      <ul class="rows reveal d1">
+        <li data-n="85">Uncapped model wants <b>85 W</b> at B<sub>τ</sub>; the laptop never drew above <b>67 W</b>.</li>
+        <li data-n="44">Capped model (Δπ = 44 W): power error max 20% → 5.5%.</li>
+        <li data-n="!">It over-predicts the slowdown: the CPU drops <b>frequency and voltage</b>, so each op gets cheaper.</li>
+      </ul>
+    </div>
+    <div class="fig-right reveal d2"><div><div class="plate" style="height:670px"><img src="../figures/turbo_on/fig3_powerline.png" alt="Powerline, turbo on"></div>
+      <p class="cap">Powerline, turbo on: corner points sit 14–15% below the roof</p></div></div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>PL1 45 W · PL2 90 W · 95–98 °C</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 11. DATA REUSE: LEVELS ============ -->
+<section class="slide" data-title="Data reuse">
+  <div class="chrome top"><span>04 · Results</span><span>Data reuse · turbo off</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>Closer data, cheaper bytes</h2><span class="tag">inclusive upper bounds · pJ/B</span></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:40px;margin-top:30px" class="reveal d1">
+      <div class="stat"><div class="n">62</div><div class="l">L1 · 0.28× DRAM</div></div>
+      <div class="stat"><div class="n">71</div><div class="l">L2 · 0.32×</div></div>
+      <div class="stat"><div class="n">96</div><div class="l">L3 · 0.44×</div></div>
+      <div class="stat"><div class="n">219</div><div class="l">DRAM</div></div>
+    </div>
+    <div class="plate reveal d2" style="margin-top:30px;height:430px"><img src="../figures/turbo_off/fig4_data_reuse.png" alt="Per-level energy and bandwidth"></div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Values include per-element instruction energy (as in paper 2)</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 12. TILING ============ -->
+<section class="slide" data-title="Tiling">
+  <div class="chrome top"><span>04 · Results</span><span>Real kernels</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>Tiling: faster <em>and</em> greener</h2><span class="tag">matmul n = 2048 · 8 threads</span></div>
+    <div class="plate reveal d1" style="margin-top:28px;height:460px"><img src="../figures/turbo_on/fig7_matmul_reuse.png" alt="Naive vs tiled matmul"></div>
+    <ul class="rows reveal d2" style="margin-top:14px">
+      <li data-n="×">b = 128 tiles: <b>2.9×</b> (turbo on) / <b>2.2×</b> (turbo off) more GFLOP/J than naive.</li>
+      <li data-n="Q">Measured Q: naive matmul has I = 1.28, not 0.25. The analytic Q was 5× too high because B is shared through L3.</li>
+    </ul>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Hatched = every repeat thermally throttled</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 13. THREADS ============ -->
+<section class="slide" data-title="Threads">
+  <div class="chrome top"><span>04 · Results</span><span>Thread scaling · turbo on</span></div><div class="hair top"></div>
+  <div class="content split">
+    <div class="col center">
+      <h2 class="reveal">Fewer threads, <em>less energy</em></h2>
+      <table class="ledger compact reveal d1">
+        <tr><th>I</th><th>Fastest</th><th>Greenest</th></tr>
+        <tr><td class="m">0.25</td><td class="v">8 threads</td><td class="v"><b>2 threads</b></td></tr>
+        <tr><td class="m">4</td><td class="v">8 threads</td><td class="v"><b>4 threads</b></td></tr>
+        <tr><td class="m">64</td><td class="v">12 threads</td><td class="v">12 threads</td></tr>
+      </table>
+      <p class="body reveal d2" style="font-size:28px">Extra threads pay off only when compute-bound. The model has no notion of E-cores or SMT.</p>
+    </div>
+    <div class="fig-right reveal d2"><div><div class="plate" style="height:690px"><img src="../figures/turbo_on/fig6_threads.png" alt="Thread scaling"></div></div></div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>1–4 P-cores · 6–8 +E-cores · 12 +SMT</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 14. TURBO OFF ============ -->
+<section class="slide" data-title="Turbo off">
+  <div class="chrome top"><span>05 · Main finding</span><span>Turbo on vs off</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>Turn turbo <em>off</em></h2><span class="tag">peak 12.1 vs 6.1 GFLOP/J</span></div>
+    <div style="display:grid;grid-template-columns:560px 1fr;gap:56px;margin-top:30px">
+      <div class="col">
+        <div class="stat reveal d1"><div class="n">2.0–2.9×</div><div class="l">more energy-efficient at <b>every</b> intensity</div></div>
+        <div class="stat reveal d2"><div class="n">~3×</div><div class="l">lower ε<sub>flop</sub>, ε<sub>mem</sub>, π<sub>0</sub> (≈ V²); memory-bound code loses only 9% speed</div></div>
+        <p class="verdict reveal d3" style="font-size:44px">Race-to-halt holds <em>within</em> a setting, not <em>across</em> settings.</p>
+      </div>
+      <div class="reveal d2"><div class="plate"><img src="../figures/comparison/cmp_ratio.png" alt="Turbo off / turbo on ratios"></div>
+        <p class="cap">Measured turbo-off / turbo-on ratio; &gt; 1 means turbo off is better</p></div>
+    </div>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>The model has no frequency or voltage term</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 15. CRITIQUE AND CONCLUSION ============ -->
+<section class="slide" data-title="Conclusion">
+  <div class="chrome top"><span>06 · Critique &amp; conclusion</span><span></span></div><div class="hair top"></div>
+  <div class="content">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:64px">
+      <div class="reveal"><p class="kicker" style="border-bottom:1.5px solid var(--ink);padding-bottom:12px">Strengths</p>
+        <ul class="rows"><li data-n="+">5 numbers, &lt; 2% energy error</li><li data-n="+">Algorithm-centred (W, Q, I)</li><li data-n="+">Explains race-to-halt via π<sub>0</sub></li><li data-n="+">Extends cleanly: caps, caches</li></ul></div>
+      <div class="reveal d1"><p class="kicker" style="border-bottom:1.5px solid var(--ink);padding-bottom:12px">Weaknesses (our evidence)</p>
+        <ul class="rows"><li data-n="−">Constants change 3× with DVFS</li><li data-n="−">Cap and throttling; best-case overlap</li><li data-n="−">Q counts DRAM only (matmul 1.4–2.4× off)</li><li data-n="−">No P/E cores, SMT or contention</li></ul></div>
+    </div>
+    <p class="verdict reveal d2" style="margin-top:48px;font-size:66px;width:1500px">Faster ⇒ greener <em>at a fixed clock</em>, but the fastest clock is not the greenest.</p>
+  </div>
+  <svg class="glitch" viewBox="0 0 300 780" fill="#1F2BE0" aria-hidden="true" style="width:160px;top:560px;height:380px">
+    <rect x="276" y="0" width="24" height="780"/><rect x="236" y="160" width="16" height="620"/><rect x="204" y="320" width="12" height="460"/><rect x="178" y="480" width="9" height="300"/><rect x="158" y="620" width="7" height="160"/></svg>
+  <div class="hair bot"></div><div class="chrome bot"><span>Thank you · questions</span><span class="pagenum"></span></div>
+</section>
+
+</main>
+</div>
+<div class="progress" id="progress"></div>
+<div class="edit-hotzone"></div>
+<button class="edit-toggle" id="editToggle" title="Edit mode (E)">EDIT</button>
+
+<script>
+/* ===========================================
+   SLIDE PRESENTATION CONTROLLER
+   Fixed 1920x1080 stage, keyboard / wheel / touch navigation, page numbers, progress bar
+   =========================================== */
+class SlidePresentation {
+  constructor() {
+    this.slides = [...document.querySelectorAll('.slide')];
+    this.stage = document.getElementById('deckStage');
+    this.progress = document.getElementById('progress');
+    this.current = 0;
+    this.slides.forEach((s, i) => s.querySelectorAll('.pagenum').forEach(p =>
+      p.textContent = String(i + 1).padStart(2, '0') + ' / ' + String(this.slides.length).padStart(2, '0')));
+    this.scale(); window.addEventListener('resize', () => this.scale());
+    this.keys(); this.wheel(); this.touch();
+    const h = parseInt(location.hash.slice(1), 10);
+    this.show(Number.isFinite(h) ? h - 1 : 0);
+  }
+  scale() {  // scale the whole stage uniformly; letterbox, never reflow
+    const k = Math.min(innerWidth / 1920, innerHeight / 1080);
+    this.stage.style.transform = `translate(${(innerWidth - 1920 * k) / 2}px, ${(innerHeight - 1080 * k) / 2}px) scale(${k})`;
+  }
+  keys() {
+    document.addEventListener('keydown', e => {
+      if (e.target.isContentEditable) return;
+      if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); this.show(this.current + 1); }
+      if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); this.show(this.current - 1); }
+      if (e.key === 'Home') this.show(0);
+      if (e.key === 'End') this.show(this.slides.length - 1);
+    });
+  }
+  wheel() {
+    let lock = false;
+    addEventListener('wheel', e => {
+      if (lock || Math.abs(e.deltaY) < 20) return;
+      lock = true; setTimeout(() => lock = false, 700);
+      this.show(this.current + (e.deltaY > 0 ? 1 : -1));
+    }, { passive: true });
+  }
+  touch() {
+    let x0 = null;
+    addEventListener('touchstart', e => x0 = e.touches[0].clientX, { passive: true });
+    addEventListener('touchend', e => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0;
+      if (Math.abs(dx) > 50) this.show(this.current + (dx < 0 ? 1 : -1));
+      x0 = null;
+    });
+  }
+  show(i) {
+    this.current = Math.max(0, Math.min(i, this.slides.length - 1));
+    this.slides.forEach((s, j) => { s.classList.toggle('active', j === this.current); s.classList.remove('visible'); });
+    requestAnimationFrame(() => requestAnimationFrame(() => this.slides[this.current].classList.add('visible')));
+    this.progress.style.width = (100 * (this.current + 1) / this.slides.length) + '%';
+    history.replaceState(null, '', '#' + (this.current + 1));
+  }
+}
+const deck = new SlidePresentation();
+
+/* ===========================================
+   INLINE EDITING: hover the top-left corner or press E; edits auto-save to localStorage
+   =========================================== */
+const editor = {
+  isActive: false, key: 'energy-roofline-deck-edits',
+  targets: () => document.querySelectorAll('.slide h1, .slide h2, .slide p, .slide li, .slide td, .slide th, .stat .n, .stat .l'),
+  toggleEditMode() {
+    this.isActive = !this.isActive;
+    document.body.classList.toggle('editing', this.isActive);
+    document.getElementById('editToggle').classList.toggle('active', this.isActive);
+    this.targets().forEach(el => el.setAttribute('contenteditable', this.isActive ? 'true' : 'false'));
+    if (!this.isActive) this.save();
+  },
+  save() {
+    try { localStorage.setItem(this.key, JSON.stringify([...this.targets()].map(el => el.innerHTML))); } catch (e) {}
+  },
+  load() {
+    try {
+      const d = JSON.parse(localStorage.getItem(this.key) || 'null');
+      if (d) this.targets().forEach((el, i) => { if (d[i] !== undefined) el.innerHTML = d[i]; });
+    } catch (e) {}
+  }
+};
+editor.load();
+document.addEventListener('input', () => editor.isActive && editor.save());
+document.addEventListener('keydown', e => {
+  if ((e.key === 'e' || e.key === 'E') && !e.target.isContentEditable) editor.toggleEditMode();
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); editor.save(); }
+});
+const hotzone = document.querySelector('.edit-hotzone'), editToggle = document.getElementById('editToggle');
+let hideTimeout = null;
+const hideSoon = () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); };
+hotzone.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); editToggle.classList.add('show'); });
+hotzone.addEventListener('mouseleave', hideSoon);
+editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+editToggle.addEventListener('mouseleave', hideSoon);
+editToggle.addEventListener('click', () => editor.toggleEditMode());
+hotzone.addEventListener('click', () => editor.toggleEditMode());
+</script>
+</body>
+</html>

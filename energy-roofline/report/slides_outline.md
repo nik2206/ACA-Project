@@ -1,6 +1,6 @@
 # Slides outline: Performance–Energy Trade-offs with Energy Roofline Models
 
-About 14 slides, roughly 12–15 minutes. Figure paths are relative to `report/`. An HTML version of this deck is in `report/slides/index.html`.
+About 14 slides, roughly 12–15 minutes. Figure paths are relative to `report/`. An HTML version of this deck is in `report/slides/index.html` (15 slides: data reuse and tiling get one slide each, and the energy breakdown moves to the balance-gap slide; arrow keys / space to navigate, E to edit text).
 
 ---
 
