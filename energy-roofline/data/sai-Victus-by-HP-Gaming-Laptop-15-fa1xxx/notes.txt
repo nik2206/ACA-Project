@@ -1,0 +1,131 @@
+Main machine: measurement notes (Workstream A)
+==============================================
+
+Machine
+-------
+- Laptop: HP Victus 15-fa1xxx (hostname sai-Victus-by-HP-Gaming-Laptop-15-fa1xxx)
+- CPU: Intel Core i5-13420H (Raptor Lake-H), HYBRID:
+    4 P-cores (Golden Cove, SMT): logical CPUs 0-7 (pairs 0/1, 2/3, 4/5, 6/7), max 4.6 GHz
+    4 E-cores (Gracemont, no SMT): logical CPUs 8-11, max 3.4 GHz
+  -> run.sh sees 8 physical cores, 12 logical CPUs. AVX2 + FMA, no AVX-512 (BLK=32).
+- Caches: L1d 48 KB per P-core / 32 KB per E-core (320 KB total); L2 1.25 MB per P-core +
+  2 MB shared by the 4 E-cores (7 MB total); L3 12 MB shared.
+- Memory: 15 GB, 2 memory controllers (uncore_imc_free_running_0/1). Measured stream
+  bandwidth about 40 GB/s.
+- OS: Linux Mint 22, kernel 6.8.0-39-generic, gcc 13.3.0 (-O3 -march=native -fopenmp)
+- Date of runs: 2026-11-07.  results.csv: 16:30-17:06 IST;  results_run2.csv: 17:06-17:48 IST
+  (same day, back to back, NOT after a reboot; the machine idled between the two only for the
+  ~20 s settle period at the start of run 2).
+
+Settings during the runs
+------------------------
+- Turbo: ON (intel_pstate active, no_turbo=0), governor powersave (normal for intel_pstate)
+- Power profile: Performance, set directly (powerprofilesctl not installed):
+    /sys/firmware/acpi/platform_profile = performance, EPP = performance on all CPUs
+- AC adapter plugged in; browser closed; no interaction during the runs.
+- RAPL power limits (intel-rapl:0 and intel-rapl-mmio:0): PL1 45 W / 56 s, PL2 90 W.
+- thermald running (the system default), see anomalies.
+- Thread binding: OMP_PROC_BIND=close, OMP_PLACES=cores (OMP_PLACES=threads for 12 threads).
+  Places are filled in core-id order, so:
+    1, 2, 4 threads = P-cores only;  6 = 4 P + 2 E;  8 = 4 P + 4 E (all physical cores);
+    12 = all logical CPUs (P-core SMT siblings + E-cores).
+  Exp 1, 2 and 4 use 8 threads (all physical cores).
+
+RAPL domains
+------------
+- package-0 (intel-rapl:0): E_pkg_J. Subdomains core/uncore exist but are not used.
+- NO DRAM domain on this CPU: E_dram_J = -1 in every row, so E = E_pkg_J. DRAM energy is
+  NOT included anywhere (unlike paper 1, which measured at the wall/PSU).
+- psys (intel-rapl:1) exists but is unusable on this laptop: it advances at about
+  0.3 W regardless of load (package 3-85 W). It is logged in run_log*.txt only, never used.
+- Idle package power: 2.86 W (run 1), 2.77 W (run 2), after a 20 s settle (idle_power*.txt).
+
+Files
+-----
+results.csv, results_run2.csv  Section-5 format, Exp 1-4, 171 rows each, all E_pkg_J > 0.
+run_flags.csv, run_flags_run2.csv
+    One line per results row (same order; 'row' = 1-based data row): attempt number,
+    throttled (0/1), throttle_frac (fraction of the timed region the package was thermally
+    throttled), pl1_min_W, temp_max_C, throttle_events, imbalance. USE THIS TO FILTER.
+q_measured.csv, q_measured_run2.csv   Exp 4 Q per rep: analytic formula vs perf-measured.
+machine_info*.txt, idle_power*.txt, run_log*.txt (raw stderr diagnostics), console*.log
+prelim_throttled/   an earlier full run WITHOUT throttle detection. Do not use it for fitting;
+    kept only as evidence for the critique (turbo/thermal behaviour breaks the
+    constant-cost-per-op assumption: e.g. K=512 ran at 250-260 GFLOP/s / 31 W in all three
+    repeats there, vs 356 GFLOP/s / 62 W in the clean run).
+
+How Q was obtained
+------------------
+- Synthetic kernel (Exp 1-3): analytic, Q = 8 B per element per rep (exact by construction).
+- Real kernels (Exp 4): MEASURED with perf, uncore_imc_free_running_{0,1}/data_read,data_write/
+  (system-wide DRAM traffic). Per config: one run with REPS=1 and one with REPS=R; Q/rep =
+  (bytes_R - bytes_1 - idle_rate x extra_time) / (R - 1), which cancels setup/warm-up.
+  The idle background DRAM traffic (display scan-out etc.) was 2.1-2.5 GB/s and is subtracted.
+  The measured value is passed to kernels.c through Q_OVERRIDE, so the Q column of 'real'
+  rows is the measured one. Measured / analytic (run 1; run 2 within 6%):
+    triad         0.83  (26.5 B/element instead of 32: the core avoids part of the
+                         write-allocate read for full-line stores)
+    matmul_naive  0.195 (B is shared through L3 by the 8 threads, so the 8n^3 upper bound
+                         is 5x too high; real I = 1.28 flop/B, not 0.25)
+    matmul_tiled  b=32: 0.90-0.92, b=64: 0.82, b=128: 0.73-0.77
+  Validation: the method reproduces the tiled analytic Q to within about 1% in a quiet test.
+
+Changes from the original bench.c / run.sh (all in the git history of branch person-a)
+---------------------------------------------------------------------------------------
+1. Hybrid load balancing (bench.c). With schedule(static) the E-cores got the same share as
+   the P-cores and the P-cores idled: 8 threads reached 211 GFLOP/s, fewer than 4 P-cores
+   alone (254). Now each thread owns a fixed slice whose size is calibrated to its measured
+   speed (P/E share is about 1.43/0.58 when compute-bound, 1.27/0.74 memory-bound), and all reps run
+   inside one parallel region. The per-rep fork/join had also made L1 runs slower than DRAM
+   (15.6 GB/s); now 232 GB/s. Remaining imbalance (slowest/fastest thread) is in run_flags.
+2. Cache working sets use the TOTAL capacity per level: L1 = 160 KB, L2 = 3.5 MB,
+   L3 = 9.1 MB (> all L2s combined, 7 MB, so it is actually served from L3; the old
+   "half of L3" = 6 MB set fit in L2). DRAM = 512 MB.
+3. Cool-down: after every run, idle 1.5x its wall time (keeps the 56 s average below PL1).
+4. Throttle detection + retry (see anomalies). Before each run: wait for nominal PL1 and
+   package < 65 C. A throttled run is retried up to 3 times; the last attempt is kept.
+5. Real kernels use dynamic scheduling (rows / tiles / 64K-element chunks).
+
+Sanity numbers (run 1; run 2 in brackets)
+-----------------------------------------
+- Peak synthetic: 362 [368] GFLOP/s on 8 cores (Exp 1), 384 GFLOP/s on 12 threads (Exp 3).
+  Theoretical peak at max turbo: 4 P x 4.6 GHz x 16 flop/cycle (2 FMA x 4 lanes x 2)
+  + 4 E x 3.4 GHz x 8 flop/cycle = 294 + 109 = 403 GFLOP/s -> about 90% achieved.
+  (Naive lscpu formula 8 cores x 4.6 GHz x 16 = 589 GFLOP/s -> 61%.)
+  Single P-core: 67.6 GFLOP/s of 73.6 (92%).
+- DRAM bandwidth: 40.1 [40.0] GB/s (Exp 1, K=1-2). Bandwidth saturates at about 4 threads.
+- Cache bandwidth at K=1: L1 232, L2 221, L3 190 GB/s. At K=1 these are limited by the
+  core's instruction throughput, not by L1/L2, so L1 and L2 look alike in time; the
+  difference is in POWER (L1 71 W, L2 74 W, L3 80 W, DRAM 50 W).
+- Time balance B_tau = 362/40.1 = about 9 flop/B.
+- Repeatability: across the 57 configurations, median |difference| of run-2 vs run-1 medians
+  = 0.5% in GFLOP/s and 1.1% in power. Worst (unflagged) configs: 8-10% (compute-bound runs,
+  turbo frequency varies with temperature). A quick unconstrained least-squares fit of Exp 1
+  (my own check, not analyze.py) gave eps_flop 100/101 pJ, eps_mem 641/627 pJ/B, pi0
+  23.2/23.6 W: agreement within 3%.
+
+Anomalies
+---------
+1. THERMAL THROTTLING (most important). The laptop cannot sustain all-core turbo: at 60-85 W
+   the package reaches 95-98 C within 1-2 s. Two mechanisms:
+   a) TCC (the CPU's own thermal control) cuts clocks near Tjmax (visible in
+      /sys/devices/system/cpu/cpu*/thermal_throttle; mostly the E-core cluster);
+   b) thermald lowers PL1 (seen 45 -> 42.8 W, and around 32 W in the preliminary run).
+   Flagged rows (throttled=1 in run_flags*.csv): 21 of 171 in run 1, 28 of 171 in run 2,
+   always the hottest configs (74-85 W):
+     both runs: reuse L2 K=1,2,4 and L3 K=4 (3/3 repeats); matmul_tiled b=64, b=128 (3/3);
+                reuse L1 K=1 (1/3 run 1, 3/3 run 2); reuse L3 K=8 (1/3); threads 12 K=256 (1/3)
+     run 2 only: reuse L3 K=2 (2/3), L3 K=16 (2/3), matmul_tiled b=32 (1/3).
+   No Exp 1 (intensity) row and no other Exp 3 row is flagged. Flagged rows have
+   throttle_frac up to 0.55. Their repeats are still fairly consistent (L2 spread 1-3%),
+   but they are biased slow/low-power: down-weight or exclude them when fitting the
+   per-level energies and when quoting matmul_tiled.
+2. Power noise at low load: single-thread runs show identical GFLOP/s but +-7% package power
+   (20-23 W) from background desktop activity on the idle cores. Negligible at high power.
+3. Runs were made with turbo ON, so frequency is not constant across intensities
+   (memory-bound runs also run at full clock). The optional turbo-off rerun of Exp 1
+   (needs sudo) has NOT been done.
+4. pi0 from the fit (about 23 W) is about 8x the idle package power (2.8 W): as in paper 1,
+   the "constant" power includes the active-but-not-computing power of all cores and the
+   uncore at full clock, not just idle.
+5. Run 2 was done on the same day right after run 1, not after a reboot.
