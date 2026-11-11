@@ -1,12 +1,18 @@
 # Energy Roofline on a Multicore CPU
 
 Reproduces the method of Choi et al., "A Roofline Model of Energy" (IPDPS 2013), plus
-the cache-level energy costs from Choi et al. (IPDPS 2014), on one CPU.
+the power cap and cache-level energy costs from Choi et al. (IPDPS 2014), on one CPU
+(Intel Core i5-13420H laptop, turbo on and turbo off).
+
+Authors: Sai Abhinav (measurements: `bench.c`, `kernels.c`, `rapl.h`, `run.sh`, `data/`) and
+Nikhil (modelling, analysis, report and slides: `analyze.py`, `compare.py`,
+`make_fake_data.py`, `report/`).
 
 ## Requirements
 - **Linux running directly on the hardware** (not WSL, not a VM). An Ubuntu live USB works.
 - Intel CPU, or AMD Ryzen/EPYC (kernel 5.8 or newer)
-- `sudo apt install gcc python3-numpy python3-scipy python3-pandas python3-matplotlib`
+- `sudo apt install gcc python3-numpy python3-matplotlib` (scipy and pandas are not needed)
+- `linux-tools` (`perf`) for measuring the real kernels' DRAM traffic (optional: without it the analytic Q is used)
 
 ## Steps
 ```bash
@@ -17,27 +23,35 @@ ls /sys/class/powercap/          # should list intel-rapl:0 ...
 # 2. prepare the machine: plug in the charger, set the power mode to Performance,
 #    close browsers and other apps, don't touch the machine while it runs
 
-# 3. quick test (~2 min): check the energy columns are NOT -1
-QUICK=1 ./run.sh
+# 3. quick test (a few minutes): check the energy columns are NOT -1
+QUICK=1 OUTDIR=data/$(hostname) ./run.sh
 
-# 4. full run (~15-25 min)
-./run.sh
+# 4. full run (roughly 20-40 min: every run is followed by a cool-down and throttled
+#    runs are retried, so a hot laptop takes longer)
+OUTDIR=data/$(hostname) ./run.sh
 
-# 5. fit the model and make the plots
-python3 analyze.py
+# 5. fit the model and make the plots (writes them next to the CSV unless --out is given)
+python3 analyze.py data/$(hostname)/results.csv
 ```
 
 ## Outputs
+`run.sh` writes `results.csv`, `run_flags.csv`, `q_measured.csv`, `run_log.txt`,
+`machine_info.txt` and `idle_power.txt` (details in the Workstream A section below).
+`analyze.py` then writes:
+
 | File | What it shows |
 |---|---|
-| `summary.txt` | fitted ε_flop, ε_mem, π0, B_τ, B_ε, B̂_ε, race-to-halt verdict, per-level pJ/B, best thread counts |
+| `summary.txt`, `summary.json` | fitted ε_flop, ε_mem, π0, B_τ, B_ε, B̂_ε, race-to-halt verdict, model errors, per-level pJ/B, real kernels, energy breakdown, best thread counts |
 | `fig1_roofline.png` | time roofline (GFLOP/s vs intensity) |
 | `fig2_archline.png` | energy roofline / "arch line" (GFLOP/J vs intensity) |
 | `fig3_powerline.png` | average power vs intensity |
 | `fig4_data_reuse.png` | energy per byte and bandwidth for L1 / L2 / L3 / DRAM |
 | `fig5_reuse_archlines.png` | GFLOP/J vs intensity for each data location |
 | `fig6_threads.png` | time, energy, GFLOP/J and power vs thread count at 3 intensities |
-| `machine_info.txt`, `idle_power.txt` | CPU details and idle package power |
+| `fig7_matmul_reuse.png` | naive vs tiled matrix multiply (time, energy, GFLOP/J) |
+| `fig8_energy_breakdown.png` | energy per flop split into flops, memory and constant energy |
+| `fig9_model_fit.png` | model vs measured energy and time |
+| `results_summary.csv` | one row per configuration (medians of the repeats) |
 
 ## What the benchmark does
 `bench.c` loads each double from an array, applies K dependent FMAs (x = x·a + b), and
@@ -46,17 +60,26 @@ I = K/4 flop/byte. Changing K sweeps the intensity; changing the array size pick
 cache level the data comes from; `OMP_NUM_THREADS` sets the thread count.
 
 ## Experiments (run.sh)
-1. **Intensity:** K = 1 to 512, all physical cores, 512 MB array (in DRAM)
-2. **Data reuse:** same kernel with the array sized to half of L1, L2 or L3, or in DRAM
-3. **Threads:** 1 up to all cores (plus SMT), at I = 0.25, 4 and 64 flop/byte
+1. **Intensity:** K = 1 to 512 (I = 0.25 to 128), all physical cores, 512 MB array (in DRAM)
+2. **Data reuse:** K = 1, 2, 4, 8, 16, 64 with the working set sized from the *total* cache
+   capacity of all cores: half of the total L1d, half of the total L2, and for L3 a size
+   larger than all L2 caches together but below L3 (on our CPU 160 KB, 3.5 MB, 9.1 MB),
+   plus the 512 MB DRAM array
+3. **Threads:** 1, 2, 4, 6, 8 and 12 threads (12 = with SMT), at I = 0.25, 4 and 64 flop/byte
+4. **Real kernels** (`kernels.c`): triad and naive / tiled matrix multiply, with DRAM traffic
+   measured by `perf` (see "Real kernels" below)
+
+`ONLY=intensity,reuse,threads,real` runs a subset (see the options table below).
 
 Each configuration runs for at least 1 s and is repeated 3 times; the analysis uses the median.
 
 ## Notes for the report
 - RAPL measures the CPU package (and DRAM on some Intel chips), not the whole system,
   so π0 is much smaller than the paper's 122 W, which was measured for the full machine.
+  Our CPU has no DRAM domain, so DRAM energy is missing (see `report/dram_sensitivity.py`).
 - Peaks are measured from the benchmark itself, not taken from vendor specs.
-- Turbo boost changes the clock with load and temperature; mention it if it was on.
+- Turbo boost changes the clock with load and temperature. Our data has both settings:
+  turbo on (two runs) and turbo off (`results_turbo_off.csv`).
 
 ## run.sh options, real kernels and throttling handling (Workstream A)
 
@@ -115,7 +138,9 @@ break the model's assumption of a constant cost per operation. Therefore:
 ## Analysis and report (Workstream B)
 
 Requirements: Python 3 with numpy and matplotlib only (no scipy/pandas). The PDF build uses
-google-chrome/chromium in headless mode (pandoc is not needed).
+google-chrome/chromium in headless mode (pandoc is not needed). If neither is installed,
+`build_pdf.py` still writes `report.html`; print it to PDF from any Chromium-based browser, e.g.
+`brave-browser --headless=new --no-pdf-header-footer --print-to-pdf=report/report.pdf report/report.html`.
 
 ```bash
 H=data/sai-Victus-by-HP-Gaming-Laptop-15-fa1xxx
@@ -130,6 +155,8 @@ python3 compare.py report/figures/turbo_on/summary.json report/figures/turbo_on_
         --labels "run 1" "run 2" --out report/figures/repeatability
 # DRAM energy sensitivity figure + table (needs the two summary.json files above)
 python3 report/dram_sensitivity.py
+# viva what-ifs X1-X3 (pi0 sweep, power-cap what-if, greenup + EDP) -> report/figures/viva/
+python3 report/viva_extras.py
 # report PDF
 python3 report/build_pdf.py
 # regression test of the fitting code (planted parameters, corrupted+flagged rows)
@@ -139,6 +166,10 @@ python3 make_fake_data.py --out /tmp/fake --check
 `analyze.py` figures: fig1 roofline, fig2 arch line, fig3 powerline (all with the power-capped
 model and real kernels), fig4 per-level energy/bandwidth, fig5 arch lines by data location,
 fig6 thread scaling, fig7 naive vs tiled matmul, fig8 energy breakdown, fig9 model vs measured.
+
+`report/viva_guide.md` is the viva study guide: both papers derived from first principles, the papers'
+figures mapped to ours, 62 evaluator questions with answers, pros and cons, the papers' open questions,
+and a one-page cheat sheet.
 
 ### Open points and caveats in the analysis
 
@@ -168,7 +199,6 @@ These are judgement calls or uncertainties in the modelling. Check them before t
 - **Differences from notes.txt.** Max Exp 1 power is 67.2 W (notes: about 69 W). Points near the
   corner sit 14-15% below the roof in run 1, 8-11% in run 2 and 19% with turbo off (notes:
   14-27%). In run 2 the fastest thread count at I = 4 is 12, not 8 (a near-tie).
-- **The report byline says "Person A / Person B".** Replace it with the authors' names.
 
 ### Viewing the slide deck
 
@@ -177,11 +207,11 @@ Fonts and its figures from `report/figures/`, so keep the folder structure intac
 
 ```bash
 xdg-open report/slides/index.html                  # default browser (Linux)
-google-chrome report/slides/index.html             # or name a browser directly
+brave-browser report/slides/index.html             # or name a browser directly
 ```
 
 Controls: Right/Left arrows, Space or Page Up/Down to move between slides, Home/End for the first
 and last slide; mouse wheel and swipe also work. Press F11 for full screen. `#8` at the end of the
 URL opens slide 8. Press **E** (or hover the top-left corner) to edit text in place. Edits are
-saved in that browser's localStorage only, not in the file. To get a PDF, print from Chrome with
-landscape layout and no margins.
+saved in that browser's localStorage only, not in the file. To get a PDF, print from a Chromium-based
+browser (Chrome, Brave) with landscape layout and no margins.

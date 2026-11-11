@@ -1,6 +1,6 @@
 # Slides outline: Performance–Energy Trade-offs with Energy Roofline Models
 
-About 14 slides, roughly 12–15 minutes. Figure paths are relative to `report/`. An HTML version of this deck is in `report/slides/index.html` (16 slides: data reuse and tiling get one slide each, the energy breakdown moves to the balance-gap slide, and slide 15 covers the DRAM energy sensitivity; arrow keys / space to navigate, E to edit text).
+About 16 slides, roughly 14–17 minutes. Figure paths are relative to `report/`. An HTML version of this deck is in `report/slides/index.html` (18 slides: data reuse and tiling get one slide each, the energy breakdown moves to the balance-gap slide, slide 7 covers paper 2's twelve platforms, slide 16 the DRAM energy sensitivity and slide 17 the papers' open questions; arrow keys / space to navigate, E to edit text).
 
 ---
 
@@ -35,6 +35,13 @@ About 14 slides, roughly 12–15 minutes. Figure paths are relative to `report/`
 - Power cap: T = max(Wτ_flop, Qτ_mem, (Wε_flop+Qε_mem)/Δπ)
 - Inclusive cache-level energies ε_L1 < ε_L2 < ε_L3 < ε_mem
 - Constant power dominates on most platforms (π₀ > 50% of peak power on 7 of 12)
+
+### 6b. Paper 2 across twelve platforms
+- GTX Titan vs Arndale mobile GPU: same flop/J up to I ≈ 4; a power-matched Arndale array has < ½ the peak but up to 1.6× the bandwidth (ignoring the network)
+- Constant power π₁ > 50% of peak power on 7 of 12 platforms; it can invert rankings (streaming: Arndale 671 < Titan 782 < Xeon Phi 1130 pJ/B)
+- Within a platform power varies only 0.65–1.15× of π₁ + Δπ (< 2×)
+- Throttling (Δπ/k) cuts total power by less than k; low π₁ and small power grain degrade more gracefully under a power bound
+- Source: `viva_guide.md` §2.8–2.10
 
 ### 7. Experimental setup
 - RAPL package energy (no DRAM domain on this CPU); idle 2.8 W
@@ -82,6 +89,12 @@ About 14 slides, roughly 12–15 minutes. Figure paths are relative to `report/`
 - Race-to-halt holds **within** each setting but not **across** settings: the model has no frequency or voltage terms
 - Figures: `figures/comparison/cmp_ratio.png`, `figures/comparison/cmp_archline.png`
 
+### 13b. Open questions
+- O1/O2 balance gap and π₀ → 0: turbo on stays race-to-halt even at π₀ = 0 (B_ε 6.43 < B_τ 9.03); turbo off flips below π₀* ≈ 2.2 W, under its 2.71 W idle power (`figures/viva/pi0_sweep.png`)
+- O5/O6 power capping: our turbo-on constants cannot reach turbo off's 18.4 W (π₀ alone is 23.2 W); real chips cap by DVFS, which cuts energy per operation (`figures/viva/cap_whatif.png`)
+- O7 work–communication trade-off: tiling is f = 1, m up to 17; greenup 2.2–2.9×; an already-fast code may spend at most 71% (turbo on) or 139% (turbo off) extra flops to remove all DRAM traffic
+- O11 DVFS: the trade-off paper 1 set aside is the largest energy lever here; under EDP turbo off wins up to I = 16 (`figures/viva/edp_ratio.png`)
+
 ### 14. Critique and conclusions
 - Strengths: 5 numbers, < 2% energy error; algorithm-centred; explains race-to-halt; extensible
 - Weaknesses (with our evidence): DVFS changes the constants 3×; power cap and throttling; best-case overlap; DRAM-only Q; π₀ catch-all and weakly identified; no heterogeneity or contention; package-only energy
@@ -90,6 +103,8 @@ About 14 slides, roughly 12–15 minutes. Figure paths are relative to `report/`
 ---
 
 ## Viva Q&A appendix
+
+The full question bank (62 answers) is in `viva_guide.md`, section 4.
 
 **Q: Why is the arch line smooth while the roofline has a sharp corner?**
 Time takes the *maximum* of the flop time and the byte time, because the two overlap, so the curve switches abruptly from one regime to the other at B_τ. Energy is the *sum* of the flop and byte energies, because both are always paid for. The sum changes gradually, so the efficiency curve bends smoothly and reaches half of its peak at the balance point. The arch is perfectly smooth only when π₀ = 0. The π₀·T term inherits the roofline's corner, so our fitted arch lines have a mild knee at B_τ (visible in the turbo-off curve).

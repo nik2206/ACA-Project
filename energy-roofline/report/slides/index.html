@@ -263,7 +263,7 @@ body.editing [contenteditable="true"] { outline: 1px dashed var(--ink-soft); }
     <p class="kicker reveal" style="margin-top:40px">Advanced Computer Architecture · Course project</p>
     <h1 class="hero reveal d1" style="margin-top:44px;width:1400px">Does faster mean <em>greener?</em></h1>
     <p class="lede reveal d2" style="margin-top:56px;width:1100px">Time, energy and power of a hybrid laptop CPU, measured and modelled with the energy roofline</p>
-    <p class="tag reveal d3" style="margin-top:40px">Person A · measurements &nbsp;&nbsp;/&nbsp;&nbsp; Person B · modelling &amp; report</p>
+    <p class="tag reveal d3" style="margin-top:40px">Sai Abhinav · measurements &nbsp;&nbsp;/&nbsp;&nbsp; Nikhil · modelling &amp; report</p>
   </div>
   <svg class="glitch" viewBox="0 0 300 780" fill="#1F2BE0" aria-hidden="true">
     <rect x="276" y="0" width="24" height="780"/><rect x="236" y="90" width="16" height="690"/><rect x="204" y="200" width="12" height="580"/>
@@ -346,6 +346,21 @@ body.editing [contenteditable="true"] { outline: 1px dashed var(--ink-soft); }
     </table>
   </div>
   <div class="hair bot"></div><div class="chrome bot"><span>Extensions</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 6b. PAPER 2 ACROSS TWELVE PLATFORMS ============ -->
+<section class="slide" data-title="Twelve platforms">
+  <div class="chrome top"><span>02 · Background</span><span>Paper 2 (2014)</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>Twelve building blocks</h2><span class="tag">GPUs · Xeon Phi · x86 · ARM · APUs</span></div>
+    <table class="ledger" style="margin-top:30px">
+      <tr class="reveal d1"><td class="m">01</td><td class="k">Titan vs Arndale</td><td class="v">same flop/J up to I ≈ 4; a power-matched mobile-GPU array has &lt; ½ the peak but up to 1.6× the bandwidth (network ignored)</td></tr>
+      <tr class="reveal d2"><td class="m">02</td><td class="k">π<sub>1</sub> &gt; 50%</td><td class="v">of peak power on 7 of 12; it inverts rankings (streaming: Arndale 671 &lt; Titan 782 &lt; Xeon Phi 1130 pJ/B)</td></tr>
+      <tr class="reveal d3"><td class="m">03</td><td class="k">Narrow range</td><td class="v">within a platform power varies only 0.65–1.15× of π<sub>1</sub> + Δπ</td></tr>
+      <tr class="reveal d4"><td class="m">04</td><td class="k">Throttling</td><td class="v">Δπ/k cuts total power by less than k; low π<sub>1</sub> and small power grain degrade more gracefully</td></tr>
+    </table>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Paper 2 writes constant power as π₁</span><span class="pagenum"></span></div>
 </section>
 
 <!-- ============ 7. SETUP ============ -->
@@ -500,6 +515,21 @@ body.editing [contenteditable="true"] { outline: 1px dashed var(--ink-soft); }
     </div>
   </div>
   <div class="hair bot"></div><div class="chrome bot"><span>The 2–3× turbo-off advantage survives either way</span><span class="pagenum"></span></div>
+</section>
+
+<!-- ============ 16b. OPEN QUESTIONS ============ -->
+<section class="slide" data-title="Open questions">
+  <div class="chrome top"><span>05 · Open questions</span><span>From the papers</span></div><div class="hair top"></div>
+  <div class="content">
+    <div class="head reveal"><h2>What the papers left open</h2><span class="tag">model what-ifs on our constants</span></div>
+    <table class="ledger" style="margin-top:30px">
+      <tr class="reveal d1"><td class="m">O1</td><td class="k">π<sub>0</sub> → 0</td><td class="v">turbo on stays race-to-halt even at π<sub>0</sub> = 0 (B<sub>ε</sub> 6.43 &lt; B<sub>τ</sub> 9.03); turbo off flips below π<sub>0</sub>* ≈ 2.2 W, under its 2.71 W idle</td></tr>
+      <tr class="reveal d2"><td class="m">O5</td><td class="k">Power caps</td><td class="v">turbo-on constants cannot reach turbo off's 18.4 W (π<sub>0</sub> alone is 23.2 W); real chips cap by DVFS, which cuts energy per op</td></tr>
+      <tr class="reveal d3"><td class="m">O7</td><td class="k">Work vs traffic</td><td class="v">tiling: f = 1, m up to 17, greenup 2.2–2.9×; a fast code may add ≤ 71% (on) / 139% (off) flops to drop all DRAM traffic</td></tr>
+      <tr class="reveal d4"><td class="m">O11</td><td class="k">DVFS</td><td class="v">the trade-off paper 1 set aside is our largest lever; under EDP turbo off wins up to I = 16</td></tr>
+    </table>
+  </div>
+  <div class="hair bot"></div><div class="chrome bot"><span>Full list: viva_guide.md §7</span><span class="pagenum"></span></div>
 </section>
 
 <!-- ============ 16. CRITIQUE AND CONCLUSION ============ -->

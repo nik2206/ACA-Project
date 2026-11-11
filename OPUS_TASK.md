@@ -38,7 +38,7 @@ Measured machine: HP Victus 15-fa1xxx, Intel Core i5-13420H (4 P-cores with SMT 
 
 ### 1.2 What exists (do not redo any of it)
 
-All paths are relative to the repo root `/home/nikhil-v-atkuru/Desktop/ACA/ACA-Project/`.
+All paths are relative to the repo root (on the Victus: `/home/sai/Desktop/Course Projects/ACA-Project/`; on the IdeaPad: `/home/nikhil-v-atkuru/Desktop/ACA/ACA-Project/`).
 
 | Item | Path | State |
 |---|---|---|
@@ -73,7 +73,7 @@ Race-to-halt holds in both settings (B_τ > B̂_ε). Turbo off is 2.0–2.9× mo
 
 ### 1.4 Which machine you are on
 
-This checkout is on a **different laptop** from the one that produced the data: hostname `nikhil-v-atkuru-IdeaPad-Slim-5-14IAH8`, CPU i5-12450H. Here `python3` has numpy 2.5.1 and matplotlib 3.11.0 but **no scipy and no pandas** (the analysis scripts need neither), `google-chrome` is installed (used by `build_pdf.py`), and `/sys/class/powercap/intel-rapl:0/energy_uj` is **not readable without sudo**. Run `hostname` first to confirm. A benchmark run here would measure a different CPU and need a sudo `chmod`, which is one more reason the plan uses existing data only.
+**Update (2026-11-11): this plan is now executed on the Victus** (hostname `sai-Victus-by-HP-Gaming-Laptop-15-fa1xxx`), the laptop that produced the data, not on the IdeaPad it was written on. Here `python3` has numpy 1.26 and matplotlib 3.6 (no scipy, no pandas), no google-chrome or chromium is installed but `brave-browser` is (Chromium-based; `build_pdf.py` looks only for google-chrome/chromium, so put a `chromium` shim pointing to brave on PATH in a scratch folder when rebuilding the PDF; do not edit `build_pdf.py`), and RAPL is not readable without sudo. The plan still needs no benchmark run.
 
 ---
 
@@ -409,7 +409,7 @@ A sweep on the IdeaPad (`ONLY=intensity OUTDIR=<new folder outside data/> ./run.
 
 ## 9. Things the planner was unsure about (check these first)
 
-1. **Host mismatch.** The task brief speaks of "this laptop" as the measured Victus, but the checkout is on an IdeaPad (i5-12450H). Confirm with `hostname`. This is why §4 plans no run.
+1. **Host.** Resolved: execution is on the Victus (see §1.4). §4 still plans no run.
 2. **π₁ vs π₀.** Paper 2 consistently writes π₁; our plan, report and slides write π₀ for both papers. Confirm on P2 p. 449–450 and apply §3.3 item 1.
 3. **42 vs 47 Arndale GPUs.** P2 §I-A text says matching the Titan on power "may require up to 42 Arndale GPUs"; the Fig. 1 caption says 47. Quote both and say the paper is inconsistent; do not pick one.
 4. **GTX 580 idle power.** P1 §V-A gives 39.6 W GPU idle; P2 Table I lists 148 W as the idle value beside π₁ = 122 W (with the asterisk). The two papers disagree or measure different things. The report's phrase "122 W fitted vs ≈ 40 W idle on its GPU" is correct for paper 1; when discussing O16, mention the paper-2 value and mark the reason for the difference "unverified".
